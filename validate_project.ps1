@@ -10,9 +10,9 @@ $required = @(
     'component.props',
     'build.bat',
     'pack_component.bat',
-    'test_runtime.ps1',
-    'runtime_state_guard.ps1',
     'validate_release_binaries.ps1',
+    'ci\\package.ps1',
+    'ci\\verify-fb2k-component.ps1',
     'src\foo_metadata_isolation\physical_metadata_audit.cpp',
     'src\foo_metadata_isolation\physical_metadata_audit_ui.cpp',
     'tests\assert_physical_metadata_audit_contract.py',
@@ -69,7 +69,7 @@ foreach ($file in $projectTextFiles) {
 
 if ($errors.Count -gt 0) {
     $errors | ForEach-Object { Write-Error $_ -ErrorAction Continue }
-    exit 1
+    throw "Project validation failed: $($errors.Count) finding(s)."
 }
 
 Write-Host "Project validation passed: $componentId"
