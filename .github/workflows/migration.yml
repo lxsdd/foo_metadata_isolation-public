@@ -2,13 +2,7 @@ name: Fast cloud qualification
 on:
   push:
     branches: [main, 'migration/**']
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
   pull_request:
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
   workflow_dispatch:
 concurrency:
   group: metadata-isolation-ci-${{ (github.event_name == 'push' || github.event_name == 'pull_request') && github.ref || github.run_id }}
@@ -20,8 +14,52 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Detect source changes without skipping the required check
+        id: changes
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = switch ($env:EVENT_NAME) {
+            'pull_request' { $env:PR_BASE_SHA; break }
+            'push'         { $env:PUSH_BEFORE_SHA; break }
+            default        { '' }
+          }
+          $needsBuild = $true
+          if ($base -match '^[0-9a-f]{40}
+        run: |
+          $ErrorActionPreference='Stop'
+          ./validate_project.ps1
+          foreach($platform in @('Win32','x64')) {
+            & msbuild 'component.sln' /t:Build /p:Configuration=Release /p:Platform=$platform /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
+            if($LASTEXITCODE -ne 0){throw "Build failed: $platform"}
+          }
+          foreach($test in @('assert_partial_commit_contract.py','assert_structured_logging_contract.py','assert_phase10_locale_contract.py','assert_phase12_physical_contract.py','assert_phase14_format_contract.py','assert_virtual_ux_contract.py','assert_physical_metadata_audit_contract.py','assert_ui_hardening_contract.py','assert_tooltip_contract.py')) {
+            & python "tests/$test"
+            if($LASTEXITCODE -ne 0){throw "Static regression failed: $test"}
+          }
+ -and $base -ne ('0' * 40)) {
+            $null = & git rev-parse -q --verify "${base}^{commit}" 2>$null
+            if ($LASTEXITCODE -eq 0) {
+              $changed = @(& git diff --name-only --diff-filter=ACMRT $base HEAD)
+              if ($LASTEXITCODE -ne 0) { throw 'Could not classify changed paths' }
+              $sourceChanges = @($changed | Where-Object {
+                $_ -notmatch '(^docs/|\.md$)'
+              })
+              $needsBuild = $sourceChanges.Count -gt 0
+            }
+          }
+          "needs_build=$($needsBuild.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          if (-not $needsBuild) { Write-Host 'Documentation-only change; required check passes without Windows compilation.' }
       - uses: microsoft/setup-msbuild@v2
+        if: steps.changes.outputs.needs_build == 'true'
       - name: Validate repository and build both architectures
+        if: steps.changes.outputs.needs_build == 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
