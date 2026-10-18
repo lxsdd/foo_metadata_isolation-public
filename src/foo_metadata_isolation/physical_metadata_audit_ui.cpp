@@ -771,7 +771,8 @@ public:
     }
 
     void restore_columns() {
-        const std::vector<int> widths = parse_int_list(g_cfg_audit_columns);
+        const pfc::string8 saved_widths = g_cfg_audit_columns.get();
+        const std::vector<int> widths = parse_int_list(saved_widths.get_ptr());
         if (widths.size() == column_count) {
             for (int index = 0; index < column_count; ++index) {
                 if (widths[index] >= 24 && widths[index] <= 2000) {
@@ -780,7 +781,8 @@ public:
             }
         }
 
-        std::string state = g_cfg_audit_column_state.get_ptr();
+        const pfc::string8 saved_state = g_cfg_audit_column_state.get();
+        std::string state(saved_state.get_ptr());
         const size_t separator = state.find('|');
         std::vector<int> order;
         if (separator != std::string::npos) {
@@ -962,7 +964,7 @@ public:
         MoveWindow(
             GetDlgItem(m_window, IDC_AUDIT_STATUS),
             margin, margin,
-            std::max(20, label_left - margin - gap), top_height,
+            std::max<int>(20, label_left - margin - gap), top_height,
             TRUE);
         MoveWindow(
             GetDlgItem(m_window, IDC_AUDIT_FILTER_LABEL),
@@ -977,7 +979,7 @@ public:
         MoveWindow(
             m_progress,
             margin, progress_top,
-            std::max(40, client.right - 2 * margin),
+            std::max<int>(40, client.right - 2 * margin),
             progress_height,
             TRUE);
 
@@ -986,8 +988,8 @@ public:
         MoveWindow(
             m_list,
             margin, list_top,
-            std::max(40, client.right - 2 * margin),
-            std::max(40, list_bottom - list_top),
+            std::max<int>(40, client.right - 2 * margin),
+            std::max<int>(40, list_bottom - list_top),
             TRUE);
 
         int x = margin;
@@ -1022,10 +1024,10 @@ public:
         MONITORINFO info = {sizeof(info)};
         if (!GetMonitorInfoW(monitor, &info)) return;
         const RECT work = info.rcWork;
-        width = std::min(width, work.right - work.left);
-        height = std::min(height, work.bottom - work.top);
-        int x = std::clamp(saved_x, work.left, std::max(work.left, work.right - width));
-        int y = std::clamp(saved_y, work.top, std::max(work.top, work.bottom - height));
+        width = std::min<int>(width, work.right - work.left);
+        height = std::min<int>(height, work.bottom - work.top);
+        int x = std::clamp<int>(saved_x, work.left, std::max<int>(work.left, work.right - width));
+        int y = std::clamp<int>(saved_y, work.top, std::max<int>(work.top, work.bottom - height));
         SetWindowPos(
             m_window, nullptr, x, y, width, height,
             SWP_NOZORDER | SWP_NOACTIVATE);
