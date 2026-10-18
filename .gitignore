@@ -1,0 +1,26 @@
+.vs/
+build/
+Debug/
+Debug FB2K/
+Release/
+Release FB2K/
+x64/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+*.aps
+*.opendb
+*.sdf
+*.tlog
+*.lastbuildstate
+tools/python/
+tools/7z-extra/
+tools/7z-full/
+tools/*.exe
+tools/*.7z
+test-runtime/
+test-data/generated/
+docs/reports/generated/**/embedded-cue-field-capabilities.json
+*.pyc
+

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <TargetName>foo_metadata_isolation</TargetName>
+    <TargetExt>.dll</TargetExt>
+    <OutDir Condition="'$(Platform)'=='Win32'">$(SolutionDir)build\</OutDir>
+    <OutDir Condition="'$(Platform)'=='x64'">$(SolutionDir)build\x64\</OutDir>
+    <IntDir>$(SolutionDir)build\obj\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TemplatePfcLib Condition="'$(Platform)'=='Win32'">$(SolutionDir)$(Configuration) FB2K\pfc.lib</TemplatePfcLib>
+    <TemplatePfcLib Condition="'$(Platform)'=='x64'">$(SolutionDir)x64\$(Configuration) FB2K\pfc.lib</TemplatePfcLib>
+    <TemplateSdkLib Condition="'$(Platform)'=='Win32'">$(SolutionDir)$(Configuration)\foobar2000_SDK.lib</TemplateSdkLib>
+    <TemplateSdkLib Condition="'$(Platform)'=='x64'">$(SolutionDir)x64\$(Configuration)\foobar2000_SDK.lib</TemplateSdkLib>
+    <TemplateHelpersLib Condition="'$(Platform)'=='Win32'">$(SolutionDir)$(Configuration)\foobar2000_sdk_helpers.lib</TemplateHelpersLib>
+    <TemplateHelpersLib Condition="'$(Platform)'=='x64'">$(SolutionDir)x64\$(Configuration)\foobar2000_sdk_helpers.lib</TemplateHelpersLib>
+    <TemplateClientLib Condition="'$(Platform)'=='Win32'">$(SolutionDir)sdk\foobar2000\foobar2000_component_client\$(Configuration)\foobar2000_component_client.lib</TemplateClientLib>
+    <TemplateClientLib Condition="'$(Platform)'=='x64'">$(SolutionDir)x64\$(Configuration)\foobar2000_component_client.lib</TemplateClientLib>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp23</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <ProcessorNumber>2</ProcessorNumber>
+      <PreprocessorDefinitions>UNICODE;_UNICODE;NOMINMAX;STRICT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(SolutionDir)sdk;$(SolutionDir)sdk\foobar2000;$(SolutionDir)wtl\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(TemplatePfcLib);$(TemplateSdkLib);$(TemplateHelpersLib);$(TemplateClientLib);$(SolutionDir)sdk\foobar2000\shared\shared-$(Platform).lib;comctl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalOptions>/PDBALTPATH:$(TargetName).pdb %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>
+

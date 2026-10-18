@@ -1,0 +1,100 @@
+#include "resource.h"
+#include <windows.h>
+
+IDD_COMPONENT_PREFERENCES DIALOGEX 0, 0, 276, 230
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN
+EXSTYLE WS_EX_CONTROLPARENT
+FONT 9, "Segoe UI", 0, 0, 0x1
+BEGIN
+    GROUPBOX        "Protection", -1, 7, 7, 262, 41
+    LTEXT           "Protection status: Active", IDC_PROTECTION_STATUS, 17, 18, 240, 10
+    LTEXT           "Direct virtual writes are blocked to protect Cue and physical metadata.", IDC_PROTECTION_DETAIL, 17, 29, 240, 16
+
+    GROUPBOX        "Virtual Editing", -1, 7, 51, 262, 31
+    LTEXT           "Safe commands use isolated projections. Apply safely / Cancel completes the validated transaction.", IDC_VIRTUAL_EDITING_DETAIL, 17, 63, 240, 16
+
+    GROUPBOX        "Commit Behavior", -1, 7, 85, 262, 57
+    LTEXT           "For known fields that cannot be stored losslessly:", IDC_COMMIT_DETAIL, 17, 97, 240, 10
+    CONTROL         "Apply supported changes; report skipped changes", IDC_APPLY_SUPPORTED_CHANGES, "Button", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 17, 112, 240, 12
+    CONTROL         "Reject the entire operation", IDC_STRICT_ALL_OR_NOTHING, "Button", BS_AUTORADIOBUTTON | WS_TABSTOP, 17, 127, 240, 12
+
+    GROUPBOX        "Logging", -1, 7, 145, 262, 30
+    CONTROL         "Standard", IDC_LOGGING_STANDARD, "Button", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 17, 158, 72, 12
+    CONTROL         "Verbose", IDC_LOGGING_VERBOSE, "Button", BS_AUTORADIOBUTTON | WS_TABSTOP, 96, 158, 72, 12
+
+    GROUPBOX        "Diagnostics", -1, 7, 178, 262, 45
+    CONTROL         "Disable direct-write protection (advanced, unsafe)", IDC_DISABLE_WRITE_GUARD, "Button", BS_AUTOCHECKBOX | WS_GROUP | WS_TABSTOP, 17, 191, 240, 12
+    LTEXT           "Warning: disabling this can rewrite Cue and remove physical metadata.", IDC_DIAGNOSTICS_DETAIL, 17, 204, 240, 16
+END
+
+IDD_EDIT_VIRTUAL_TIMING DIALOGEX 0, 0, 286, 146
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Metadata Isolation - Virtual timing"
+FONT 9, "Segoe UI", 0, 0, 0x1
+BEGIN
+    LTEXT           "", IDC_TIMING_TRACK, 8, 8, 270, 12
+    LTEXT           "Directive:", -1, 8, 27, 53, 12
+    COMBOBOX        IDC_TIMING_DIRECTIVE, 64, 25, 104, 110, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Current raw value:", -1, 8, 48, 75, 12
+    LTEXT           "", IDC_TIMING_CURRENT, 86, 48, 82, 12
+    LTEXT           "New value:", -1, 8, 67, 53, 12
+    EDITTEXT        IDC_TIMING_VALUE, 64, 65, 104, 14, ES_AUTOHSCROLL | WS_TABSTOP
+    CONTROL         "Remove this optional directive", IDC_TIMING_REMOVE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 8, 86, 172, 12
+    LTEXT           "Times use exact MM:SS:FF notation at 75 frames per second. INDEX 01 is mandatory. The complete Cue postimage is validated before commit.", -1, 8, 103, 270, 24
+    DEFPUSHBUTTON   "Review...", IDOK, 174, 127, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 228, 127, 50, 14
+END
+
+
+IDD_PHYSICAL_METADATA_AUDIT DIALOGEX 0, 0, 620, 330
+STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_CLIPCHILDREN
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "Metadata Isolation - Physical Metadata Audit"
+FONT 9, "Segoe UI", 0, 0, 0x1
+BEGIN
+    LTEXT           "Ready to scan physical metadata.", IDC_AUDIT_STATUS, 8, 8, 410, 12
+    LTEXT           "Show:", IDC_AUDIT_FILTER_LABEL, 432, 8, 30, 12
+    COMBOBOX        IDC_AUDIT_FILTER, 464, 6, 148, 120, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "", IDC_AUDIT_PROGRESS, "msctls_progress32", 0x00000008, 8, 23, 604, 7
+
+    CONTROL         "", IDC_AUDIT_RESULTS, "SysListView32", LVS_REPORT | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP, 8, 34, 604, 261
+
+    PUSHBUTTON      "Rescan", IDC_AUDIT_RESCAN, 8, 304, 56, 16
+    PUSHBUTTON      "Cancel scan", IDC_AUDIT_CANCEL, 68, 304, 66, 16
+    PUSHBUTTON      "Edit physical metadata...", IDC_AUDIT_EDIT_PHYSICAL, 144, 304, 112, 16
+    PUSHBUTTON      "Reset columns", IDC_AUDIT_RESET_COLUMNS, 262, 304, 72, 16
+    PUSHBUTTON      "Close", IDC_AUDIT_CLOSE, 562, 304, 50, 16
+END
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,0
+ PRODUCTVERSION 1,0,0,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x2L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "Metadata Isolation contributors"
+            VALUE "FileDescription", "Metadata Isolation foobar2000 component"
+            VALUE "FileVersion", "1.0.0-dev"
+            VALUE "InternalName", "foo_metadata_isolation"
+            VALUE "OriginalFilename", "foo_metadata_isolation.dll"
+            VALUE "ProductName", "Metadata Isolation"
+            VALUE "ProductVersion", "1.0.0-dev"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+
