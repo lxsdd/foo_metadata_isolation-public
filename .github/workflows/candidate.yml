@@ -2,6 +2,8 @@ name: Qualified manual candidate
 
 on:
   workflow_dispatch:
+  push:
+    branches: ['candidate/physical-audit-uat-20261018']
 
 permissions:
   contents: read
