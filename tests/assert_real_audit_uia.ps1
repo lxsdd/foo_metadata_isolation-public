@@ -33,6 +33,34 @@ public static class MetadataIsolationWindowLocator {
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr window, StringBuilder output, int maxCount);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
+  [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr window, int controlId);
+  [DllImport("user32.dll", EntryPoint="SendMessageW")] public static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr window);
+  public static string Status(IntPtr window) {
+    IntPtr label=GetDlgItem(window,1201);
+    if (label==IntPtr.Zero) throw new InvalidOperationException("Audit status control missing");
+    var text=new StringBuilder(512);
+    GetWindowTextW(label,text,text.Capacity);
+    return text.ToString();
+  }
+  public static int ItemCount(IntPtr window) {
+    IntPtr list=GetDlgItem(window,1203);
+    if (list==IntPtr.Zero) throw new InvalidOperationException("Audit ListView missing");
+    return checked((int)SendMessage(list,0x1004,IntPtr.Zero,IntPtr.Zero).ToInt64());
+  }
+  public static void SelectFilter(IntPtr window,int index) {
+    IntPtr combo=GetDlgItem(window,1202);
+    if (combo==IntPtr.Zero) throw new InvalidOperationException("Audit filter missing");
+    long selected=SendMessage(combo,0x014E,new IntPtr(index),IntPtr.Zero).ToInt64();
+    if (selected!=index) throw new InvalidOperationException("Audit filter selection rejected");
+    SendMessage(window,0x0111,new IntPtr((1 << 16) | 1202),combo);
+  }
+  public static void Rescan(IntPtr window) {
+    IntPtr button=GetDlgItem(window,1204);
+    if (button==IntPtr.Zero || !IsWindowEnabled(button))
+      throw new InvalidOperationException("Audit Rescan control unavailable");
+    SendMessage(button,0x00F5,IntPtr.Zero,IntPtr.Zero);
+  }
   public static IntPtr FindOwned(int processId, string title) {
     IntPtr found=IntPtr.Zero;
     int count=0;
@@ -91,6 +119,57 @@ if($reopened -eq [IntPtr]::Zero -or $reopened -ne $window){
   throw 'Real Audit dialog duplicated or failed to reuse process-owned HWND'
 }
 Write-Host 'PRODUCTION_AUDIT_MODELESS_REUSE=PASS'
+# The source is intentionally INCOMPLETE: physical DATE is absent while
+# TITLE/ARTIST/ALBUM/GENRE and the embedded CUESHEET exist.
+function Assert-CompletedAudit {
+  param([IntPtr]$Dialog)
+  $expected = 'Audited 1 embedded-Cue physical files: 1 problems, 0 OK'
+  for($i=0;$i -lt 150;$i++){
+    $status=[MetadataIsolationWindowLocator]::Status($Dialog)
+    if($status -eq $expected){
+      if([MetadataIsolationWindowLocator]::ItemCount($Dialog) -ne 1){
+        throw 'Actual Audited physical row missing from native ListView'
+      }
+      return
+    }
+    if($status.StartsWith('Audit failed',[StringComparison]::Ordinal)){
+      throw 'Actual Audit reports a physical metadata read failure'
+    }
+    Start-Sleep -Milliseconds 100
+  }
+  throw ('Actual read-only audit did not complete with expected classification; status class=' +
+    $(if($status.StartsWith('Scanning')){'SCANNING'}else{'UNEXPECTED'}))
+}
+Assert-CompletedAudit $window
+Write-Host 'PRODUCTION_AUDIT_INCOMPLETE_CLASSIFIER=PASS'
+# Each change is applied to the actual production ComboBox and WM_COMMAND,
+# never by calling internal C++ application logic or mocking rows.
+foreach($entry in @(
+  @{Name='Problems';Index=0;Expected=1},
+  @{Name='All';Index=1;Expected=1},
+  @{Name='Empty';Index=2;Expected=0},
+  @{Name='Incomplete';Index=3;Expected=1},
+  @{Name='Mismatch';Index=4;Expected=0},
+  @{Name='Review';Index=5;Expected=0},
+  @{Name='OK';Index=6;Expected=0}
+)){
+  [MetadataIsolationWindowLocator]::SelectFilter($window,[int]$entry.Index)
+  $seen=[MetadataIsolationWindowLocator]::ItemCount($window)
+  if($seen -ne [int]$entry.Expected){
+    throw ('Actual native audit '+$entry.Name+' filter count incorrect; expected '+$entry.Expected+' observed '+$seen)
+  }
+}
+Write-Host 'PRODUCTION_AUDIT_NATIVE_FILTER_MATRIX=PASS'
+[MetadataIsolationWindowLocator]::SelectFilter($window,0)
+# BM_CLICK is a real native button event, not a direct test callback.
+[MetadataIsolationWindowLocator]::Rescan($window)
+$pending=[MetadataIsolationWindowLocator]::Status($window)
+if(-not ($pending.StartsWith('Scanning physical metadata') -or
+          $pending.StartsWith('Finding embedded-Cue physical sources'))) {
+  throw 'Native Rescan did not trigger an observable read-only scan'
+}
+Assert-CompletedAudit $window
+Write-Host 'PRODUCTION_AUDIT_NATIVE_RESCAN=PASS'
 if((Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash -ne $before){
   throw 'Real Audit UIA test modified synthetic MP3'
 }
