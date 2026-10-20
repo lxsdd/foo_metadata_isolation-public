@@ -1779,7 +1779,7 @@ public:
                 // Never use on anything except a create-only disposable runner fixture.
                 // This deliberately exercises the native, unsafe host input writer
                 // without the isolated-shadow pathway; the Write Guard must veto it.
-                if (pfc::strstr(path, "mi-virtual-write-") == nullptr ||
+                if (std::strstr(path, "mi-virtual-write-") == nullptr ||
                     pfc::stricmp_ascii(pfc::string_extension(path), "mp3") != 0 ||
                     !cfg_enabled) {
                     throw pfc::exception("Direct Guard probe requires enabled protection and a disposable test MP3");
