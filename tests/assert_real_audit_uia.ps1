@@ -114,7 +114,7 @@ foreach ($line in ((Get-Content -LiteralPath $stateReport -Raw) -split '\r?\n'))
   if ($line -match '^([a-z_]+)=(.*)$') { $fields[$Matches[1]] = $Matches[2] }
 }
 Remove-Item -LiteralPath $stateReport -Force
-foreach ($key in @('audit_insert_result','audit_insert_error','audit_list_style','audit_list_unicode')) { if ($fields.ContainsKey($key)) { Write-Host ('AUDIT_INSERT_DIAG_' + $key.ToUpperInvariant() + '=' + $fields[$key]) } }
+foreach ($key in @('audit_insert_result','audit_insert_error','audit_list_style','audit_list_unicode','audit_cached_valid','audit_resolved_valid','audit_handles_equal','audit_actual_rows')) { if ($fields.ContainsKey($key)) { Write-Host ('AUDIT_INSERT_DIAG_' + $key.ToUpperInvariant() + '=' + $fields[$key]) } }
 $expectedState = @{
   audit_model_rows = '1'
   audit_filtered_rows = '1'
