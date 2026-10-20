@@ -75,7 +75,7 @@ try {
         if ($launcher.ExitCode -ne 0) { throw "Probe launcher failed: $token" }
         $last = -1L
         $stable = 0
-        for ($i=0; $i -lt 600; $i++) {
+        for ($i=0; $i -lt 1200; $i++) {
             if (Test-Path -LiteralPath $report) {
                 $length = (Get-Item -LiteralPath $report).Length
                 if ($length -gt 0 -and $length -eq $last) { $stable++ } else { $stable = 0 }
@@ -140,27 +140,31 @@ try {
         Write-Host "REAL_HOST_$($case.name.ToUpperInvariant())_$Architecture=PASS"
     }
     if ($RunLargeBenchmark) {
-        $caseDir = Join-Path $root 'benchmark-111'
-        $source = Join-Path $caseDir 'track-01.mp3'
-        $before = Join-Path $caseDir 'track-01.mp3.before'
-        & python tests/make_large_embedded_mp3.py $source
-        if ($LASTEXITCODE -ne 0) { throw '111-track fixture generation failed' }
-        Copy-Item -LiteralPath $source -Destination $before
-        $inventory = Invoke-IsolatedProbe '/metadata-isolation-probe-embedded-cue-inventory'
-        $inventoryText = Get-Content -LiteralPath $inventory -Raw
-        if ($inventoryText -notmatch '(?m)^inventory_subsong_count=111[ \t\r\n]*$') {
-            throw 'foobar did not expose all 111 virtual Cue tracks'
+        # Small and larger physical audio payload, same 111 virtual tracks.
+        # Observe scaling without accessing user media or asserting fake latency.
+        foreach ($repeats in @(160, 7000)) {
+            $caseDir = Join-Path $root ("benchmark-111-" + $repeats)
+            $source = Join-Path $caseDir 'track-01.mp3'
+            $before = Join-Path $caseDir 'track-01.mp3.before'
+            & python tests/make_large_embedded_mp3.py $source --repeats $repeats
+            if ($LASTEXITCODE -ne 0) { throw "111-track fixture failed: $repeats" }
+            Copy-Item -LiteralPath $source -Destination $before
+            $inventory = Invoke-IsolatedProbe '/metadata-isolation-probe-embedded-cue-inventory'
+            $inventoryText = Get-Content -LiteralPath $inventory -Raw
+            if ($inventoryText -notmatch '(?m)^inventory_subsong_count=111[ \t\r\n]*$') {
+                throw "foobar did not expose 111 virtual Cue tracks: repeats=$repeats"
+            }
+            if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne
+                (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
+                throw "111-track read-only inventory mutated source: repeats=$repeats"
+            }
+            Remove-Item -LiteralPath $inventory -Force
+            Write-Host "EMBEDDED_CUE_111_INVENTORY_$Architecture=PASS repeats=$repeats"
+            $report = Invoke-IsolatedProbe '/metadata-isolation-probe-projection-benchmark'
+            & python tests/assert_large_virtual_benchmark.py $before $source $report
+            if ($LASTEXITCODE -ne 0) { throw "111-track oracle failed: repeats=$repeats" }
+            Write-Host "REAL_HOST_111_VIRTUAL_COMMIT_$Architecture=PASS repeats=$repeats"
         }
-        if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne
-            (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
-            throw '111-track inventory mutated source'
-        }
-        Remove-Item -LiteralPath $inventory -Force
-        Write-Host "EMBEDDED_CUE_111_INVENTORY_$Architecture=PASS"
-        $report = Invoke-IsolatedProbe '/metadata-isolation-probe-projection-benchmark'
-        & python tests/assert_large_virtual_benchmark.py $before $source $report
-        if ($LASTEXITCODE -ne 0) { throw '111-track independent postimage oracle failed' }
-        Write-Host "REAL_HOST_111_VIRTUAL_COMMIT_$Architecture=PASS"
     }
 
 } finally {
