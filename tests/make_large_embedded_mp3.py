@@ -10,7 +10,9 @@ from make_isolated_embedded_mp3 import audio, frame, syncsafe
 TRACK_COUNT = 111
 AUDIO_REPEATS = 160  # ~142 seconds of synthetic MPEG frames, over 110 s Cue span.
 
-def create(path):
+def create(path, repeats=AUDIO_REPEATS):
+    if repeats not in (160, 7000):
+        raise ValueError('Only bounded 160 or 7000 repetitions are accepted')
     if path.name != "track-01.mp3" or path.exists():
         raise RuntimeError("Expected a new track-01.mp3 in runner temp")
     lines = [
@@ -38,7 +40,7 @@ def create(path):
         frame("PRIV", b"metadata-isolation-probe\0\x05\x00opaque\xfe\x00"),
         frame("TXXX", b"\x03CUESHEET\0" + cue)
     ))
-    mpeg = audio() * AUDIO_REPEATS
+    mpeg = audio() * repeats
     blob = b"ID3\x04\x00\x00" + syncsafe(len(physical)) + physical + mpeg
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("xb") as dst:
@@ -50,4 +52,6 @@ def create(path):
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("target", type=Path)
-    create(p.parse_args().target)
+    p.add_argument("--repeats", type=int, default=AUDIO_REPEATS)
+    args = p.parse_args()
+    create(args.target, args.repeats)
