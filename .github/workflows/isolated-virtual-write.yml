@@ -8,8 +8,14 @@ on:
       - 'tests/make_isolated_embedded_mp3.py'
       - 'tests/assert_isolated_virtual_write.py'
       - 'tests/run_isolated_virtual_write.ps1'
+      - 'tests/make_large_embedded_mp3.py'
+      - 'tests/assert_large_virtual_benchmark.py'
       - 'src/**'
       - 'component.sln'
+
+concurrency:
+  group: metadata-isolation-writer-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -37,6 +43,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Probe-enabled DLL build failed' }
       - name: Test real foobar isolated embedded-Cue virtual TITLE write
         shell: pwsh
-        run: ./tests/run_isolated_virtual_write.ps1 -Architecture '${{ matrix.architecture }}' -ComponentDll '${{ matrix.dll }}'
+        run: ./tests/run_isolated_virtual_write.ps1 -Architecture '${{ matrix.architecture }}' -ComponentDll '${{ matrix.dll }}' -RunLargeBenchmark
       # Probe-enabled DLLs and synthetic media must never leave runner temp.
       # No artifact, cache or public distribution of test-only binaries.
