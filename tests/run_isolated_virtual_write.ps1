@@ -286,6 +286,7 @@ try {
                 'tooltip-dark' { '/metadata-isolation-probe-tooltip-contract-dark' }
             }
             $report = Invoke-IsolatedProbe $command
+            if ($scenario -like "tooltip-*") { Get-Content -LiteralPath $report | Select-Object -First 45 | ForEach-Object { Write-Host "TOOLTIP_PROBE: $_" } }
             & python tests/assert_isolated_ux_contracts.py $report --scenario $scenario
             if ($LASTEXITCODE -ne 0) { throw "Native UI contract failed: $scenario" }
             Remove-Item -LiteralPath $report -Force
