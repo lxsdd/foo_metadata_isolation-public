@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory)][ValidateSet('Win32','x64')][string]$Architecture,
     [Parameter(Mandatory)][string]$ComponentDll,
-    [switch]$RunLargeBenchmark
+    [switch]$RunLargeBenchmark,
+    [switch]$RunDirectGuard
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -165,6 +166,45 @@ try {
             if ($LASTEXITCODE -ne 0) { throw "111-track oracle failed: repeats=$repeats" }
             Write-Host "REAL_HOST_111_VIRTUAL_COMMIT_$Architecture=PASS repeats=$repeats"
         }
+    }
+
+
+    if ($RunDirectGuard) {
+        # Last test: unsafe host writer may display the Guard warning dialog.
+        # Never allow a modal UI to disturb subsequent scenario evidence.
+        $caseDir = Join-Path $root 'guard-direct'
+        $source = Join-Path $caseDir 'track-01.mp3'
+        $before = Join-Path $caseDir 'track-01.mp3.before'
+        & python tests/make_isolated_embedded_mp3.py $source
+        if ($LASTEXITCODE -ne 0) { throw 'Direct Guard fixture generation failed' }
+        Copy-Item -LiteralPath $source -Destination $before
+        $inventory = Invoke-IsolatedProbe '/metadata-isolation-probe-embedded-cue-inventory'
+        $inventoryText = Get-Content -LiteralPath $inventory -Raw
+        if ($inventoryText -notmatch '(?m)^inventory_subsong_count=2[ \t\r\n]* {
+        try {
+            if (-not $process.HasExited) {
+                Stop-Process -Id $process.Id -Force -ErrorAction Stop
+            }
+        } catch {
+            Write-Warning 'Could not stop disposable host process'
+        }
+    }
+    if (Test-Path -LiteralPath $root) {
+        Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+) {
+            throw 'Direct Guard fixture not recognized as 2 embedded virtual tracks'
+        }
+        if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne
+            (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
+            throw 'Direct Guard fixture mutated during inventory'
+        }
+        Remove-Item -LiteralPath $inventory -Force
+        $report = Invoke-IsolatedProbe '/metadata-isolation-probe-direct-guard-virtual-title'
+        & python tests/assert_isolated_write_guard.py $before $source $report
+        if ($LASTEXITCODE -ne 0) { throw 'Direct virtual Write Guard must preserve source exactly' }
+        Write-Host "REAL_HOST_DIRECT_VIRTUAL_WRITE_GUARD_$Architecture=PASS"
     }
 
 } finally {
