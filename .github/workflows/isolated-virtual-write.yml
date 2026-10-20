@@ -30,6 +30,7 @@ permissions:
 jobs:
   isolated-virtual-write:
     runs-on: windows-latest
+    timeout-minutes: 9
     strategy:
       fail-fast: false
       matrix:
