@@ -197,11 +197,33 @@ public static class IsolatedAuditMsaa {
   [ComImport, Guid("618736e0-3c3d-11cf-810c-00aa00389b71"), InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
   public interface IAccessibleMinimal {
     [DispId(-5001)] int accChildCount { get; }
+    [DispId(-5006)] object accRole(object child);
+    [DispId(-5003)] string accName(object child);
   }
   [DllImport("oleacc.dll", ExactSpelling=true)]
   private static extern int AccessibleObjectFromWindow(
      IntPtr hwnd, int dwObjectID, ref Guid riid,
      [MarshalAs(UnmanagedType.Interface)] out IAccessibleMinimal accessible);
+  public static int[] ChildRoleSummary(IntPtr hwnd) {
+    var iid = new Guid("618736e0-3c3d-11cf-810c-00aa00389b71");
+    IAccessibleMinimal accessible = null;
+    int hr = AccessibleObjectFromWindow(hwnd, -4, ref iid, out accessible);
+    if (hr != 0 || accessible == null) return new int[] { hr, -1, -1, -1, -1 };
+    try {
+      int limit = Math.Min(32, accessible.accChildCount);
+      int listItems=0, expectedNames=0, readFailures=0;
+      for (int i=1; i<=limit; i++) {
+        try {
+          object role = accessible.accRole(i);
+          if (role != null && Convert.ToInt32(role)==34) listItems++;
+          var label = accessible.accName(i);
+          if (label != null && label.IndexOf("Incomplete", StringComparison.OrdinalIgnoreCase)>=0) expectedNames++;
+        } catch (Exception) { readFailures++; }
+      }
+      return new int[] { hr, limit, listItems, expectedNames, readFailures };
+    } catch (Exception) { return new int[] { hr, -2, -2, -2, -2 }; }
+    finally { if (accessible != null) Marshal.ReleaseComObject(accessible); }
+  }
   public static int[] ChildCount(IntPtr hwnd) {
     var iid = new Guid("618736e0-3c3d-11cf-810c-00aa00389b71");
     IAccessibleMinimal accessible = null;
@@ -216,6 +238,11 @@ public static class IsolatedAuditMsaa {
 $msaa=[IsolatedAuditMsaa]::ChildCount($ownedList)
 Write-Host ('AUDIT_MSAA_HRESULT='+$msaa[0])
 Write-Host ('AUDIT_MSAA_CHILDREN='+$msaa[1])
+$msaaDetails=[IsolatedAuditMsaa]::ChildRoleSummary($ownedList)
+Write-Host ('AUDIT_MSAA_INSPECTED_CHILDREN='+$msaaDetails[1])
+Write-Host ('AUDIT_MSAA_LISTITEM_ROLES='+$msaaDetails[2])
+Write-Host ('AUDIT_MSAA_SYNTHETIC_INCOMPLETE_NAMES='+$msaaDetails[3])
+Write-Host ('AUDIT_MSAA_DETAIL_FAILURES='+$msaaDetails[4])
 if($msaa[0] -eq 0 -and $msaa[1] -eq 1){
   Write-Host 'PRODUCTION_AUDIT_MSAA_SINGLE_ROW=PASS'
 }else{
