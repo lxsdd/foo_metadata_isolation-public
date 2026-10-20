@@ -48,6 +48,7 @@ struct tooltip_runtime_probe_result {
     bool cursor_inside = false;
     bool mouse_event_sent = false;
     bool current_tool_present = false;
+    bool forced_popup_visible = false;
     bool hover_appeared = false;
     bool hover_dismissed = false;
     bool unicode_roundtrip = false;
