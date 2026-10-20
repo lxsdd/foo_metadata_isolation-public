@@ -39,6 +39,14 @@ def main():
     keys = dict(re.findall(r"(?m)^(benchmark_[a-z_]+)=(\d+)$", report))
     for key in ("benchmark_total_us", "benchmark_process_read_bytes", "benchmark_process_write_bytes"):
         assert key in keys and int(keys[key]) >= 0, f"missing timing: {key}"
+    # The point of this 111-track test is to reject N full-copy amplification.
+    # These are conservative resource ceilings, not arbitrary speed targets.
+    source_bytes = int(keys["benchmark_source_allocated_bytes"])
+    shadow_bytes = int(keys["benchmark_shadow_allocated_bytes"])
+    writes = int(keys["benchmark_process_write_bytes"])
+    assert source_bytes > 0
+    assert shadow_bytes <= 4 * source_bytes, "111-fold shadow disk amplification"
+    assert writes <= 20 * source_bytes, "excessive process write amplification"
     print("REAL_HOST_111_VIRTUAL_COMMIT=PASS")
     for key in sorted(keys):
         if key.endswith(("_us","_bytes")):
