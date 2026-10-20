@@ -25,7 +25,7 @@ def main(destination):
         '  TRACK 03 AUDIO',
         '    TITLE "Virtual Original Three"',
         '    PERFORMER "Virtual Artist Three"',
-        '    INDEX 01 01:00:00',
+        '    INDEX 01 00:01:00',
         '',
     ])).encode("utf-8")
     tag=b"".join([
