@@ -866,6 +866,13 @@ public:
     }
 
     void refresh_list(bool preserve_selection) {
+        // foobar's native theme/layout initialization may recreate the
+        // ListView after WM_INITDIALOG. Never keep writing into a stale HWND.
+        const HWND current_list = GetDlgItem(m_window, IDC_AUDIT_RESULTS);
+        if (current_list == nullptr || !IsWindow(current_list)) {
+            throw pfc::exception("Audit result ListView is unavailable");
+        }
+        m_list = current_list;
         std::set<std::string> selected_paths;
         if (preserve_selection) {
             int item = -1;
