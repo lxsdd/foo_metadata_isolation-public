@@ -214,6 +214,7 @@ try {
             }
             Remove-Item -LiteralPath $inventory -Force
             $report = Invoke-IsolatedProbe ('/metadata-isolation-probe-production-timing-' + $test)
+            Get-Content -LiteralPath $report | Select-Object -First 70 | ForEach-Object { Write-Host "TIMING_PROBE: $_" }
             & python tests/assert_isolated_timing_write.py $before $source $report --scenario $test
             if ($LASTEXITCODE -ne 0) { throw "Timing postimage validation failed: $test" }
             Write-Host ("REAL_HOST_CUE_TIMING_" + $Architecture + "=" + $test + ":PASS")
