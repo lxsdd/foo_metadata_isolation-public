@@ -250,17 +250,22 @@ tooltip_runtime_probe_result run_tooltip_runtime_probe(bool dark_mode) noexcept 
         SetForegroundWindow(parent);
         SetActiveWindow(parent);
         SetFocus(first);
+        result.parent_visible = IsWindowVisible(parent) != FALSE;
+        result.parent_foreground = GetForegroundWindow() == parent;
         RECT first_bounds = {};
         GetWindowRect(first, &first_bounds);
         SetCursorPos(
             first_bounds.left + (first_bounds.right - first_bounds.left) / 2,
             first_bounds.top + (first_bounds.bottom - first_bounds.top) / 2);
+        POINT cursor = {};
+        result.cursor_inside = GetCursorPos(&cursor) != FALSE &&
+            PtInRect(&first_bounds, cursor) != FALSE;
         INPUT input = {};
         input.type = INPUT_MOUSE;
         input.mi.dx = 1;
         input.mi.dy = 0;
         input.mi.dwFlags = MOUSEEVENTF_MOVE;
-        SendInput(1, &input, sizeof(input));
+        result.mouse_event_sent = SendInput(1, &input, sizeof(input)) == 1;
         MSG relay = {};
         relay.hwnd = first;
         relay.message = WM_MOUSEMOVE;
@@ -280,6 +285,11 @@ tooltip_runtime_probe_result run_tooltip_runtime_probe(bool dark_mode) noexcept 
             }
             Sleep(10);
         }
+        TOOLINFOW active = {};
+        active.cbSize = sizeof(active);
+        result.current_tool_present = SendMessageW(
+            tooltips.window(), TTM_GETCURRENTTOOLW, 0,
+            reinterpret_cast<LPARAM>(&active)) != FALSE;
         result.hover_appeared = IsWindowVisible(tooltips.window()) != FALSE;
         SetCursorPos(first_bounds.right + 40, first_bounds.bottom + 40);
         SendMessageW(first, WM_MOUSELEAVE, 0, 0);
