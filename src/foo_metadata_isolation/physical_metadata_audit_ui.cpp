@@ -97,6 +97,10 @@ std::atomic_int g_audit_probe_insert_result{-999};
 std::atomic_int g_audit_probe_insert_error{-1};
 std::atomic_int g_audit_probe_list_style{-1};
 std::atomic_int g_audit_probe_list_unicode{-1};
+std::atomic_int g_audit_probe_resolved_valid{-1};
+std::atomic_int g_audit_probe_cached_valid{-1};
+std::atomic_int g_audit_probe_handles_equal{-1};
+std::atomic_int g_audit_probe_actual_rows{-1};
 #endif
 
 enum class audit_scope {
@@ -922,6 +926,12 @@ public:
             g_audit_probe_insert_error.store(static_cast<int>(GetLastError()));
             g_audit_probe_list_style.store(static_cast<int>(GetWindowLongPtrW(m_list, GWL_STYLE)));
             g_audit_probe_list_unicode.store(ListView_GetUnicodeFormat(m_list));
+            const HWND resolved = GetDlgItem(m_window, IDC_AUDIT_RESULTS);
+            g_audit_probe_cached_valid.store(IsWindow(m_list) != FALSE);
+            g_audit_probe_resolved_valid.store(IsWindow(resolved) != FALSE);
+            g_audit_probe_handles_equal.store(resolved == m_list);
+            g_audit_probe_actual_rows.store(
+                IsWindow(resolved) ? ListView_GetItemCount(resolved) : -1);
 #endif
             if (inserted < 0) continue;
 
@@ -1377,6 +1387,10 @@ void read_audit_internal_state_for_test(pfc::string_base& output) {
            << "audit_insert_error=" << g_audit_probe_insert_error.load() << "\n"
            << "audit_list_style=" << g_audit_probe_list_style.load() << "\n"
            << "audit_list_unicode=" << g_audit_probe_list_unicode.load() << "\n"
+           << "audit_cached_valid=" << g_audit_probe_cached_valid.load() << "\n"
+           << "audit_resolved_valid=" << g_audit_probe_resolved_valid.load() << "\n"
+           << "audit_handles_equal=" << g_audit_probe_handles_equal.load() << "\n"
+           << "audit_actual_rows=" << g_audit_probe_actual_rows.load() << "\n"
            << "audit_filter_index=" << g_audit_probe_filter.load() << "\n"
            << "audit_list_visible="
            << (g_audit_probe_list_visible.load() ? "true" : "false") << "\n";
