@@ -9,7 +9,7 @@ import re
 from assert_isolated_virtual_write import parse
 
 def require(report, key, expected):
-    match = re.search(r"(?m)^" + re.escape(key) + r"=(.*?)\\r?$", report)
+    match = re.search(r"(?m)^" + re.escape(key) + r"=(.*?)$", report)
     assert match is not None, f"missing writer evidence: {key}"
     assert match.group(1) == expected, f"{key}: expected {expected!r}, got {match.group(1)!r}"
 
