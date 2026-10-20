@@ -7,7 +7,8 @@ param(
     [switch]$RunPhysicalMetadata,
     [switch]$RunVirtualReplayGain,
     [switch]$RunCueTiming,
-    [switch]$RunUiContracts
+    [switch]$RunUiContracts,
+    [switch]$RunRealAuditUia
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -296,6 +297,16 @@ try {
             }
             Write-Host ('REAL_HOST_UI_' + $Architecture + '=' + $scenario + ':PASS')
         }
+    }
+
+    if ($RunRealAuditUia) {
+        $caseDir = Join-Path $root 'real-audit-ui'
+        $source = Join-Path $caseDir 'track-01.mp3'
+        & python tests/make_isolated_embedded_mp3.py $source
+        if ($LASTEXITCODE -ne 0) { throw 'Real Audit UI fixture generation failed' }
+        $adapter = Join-Path (Get-Location).Path '.ci_shared/scripts/windows-ui-accessibility.ps1'
+        & ./tests/assert_real_audit_uia.ps1 -FoobarPid $process.Id -Executable $exe -Workdir $portable -FixturePath $source -AdapterPath $adapter
+        Write-Host "REAL_HOST_PRODUCTION_AUDIT_UIA_$Architecture=PASS"
     }
 
 } finally {
