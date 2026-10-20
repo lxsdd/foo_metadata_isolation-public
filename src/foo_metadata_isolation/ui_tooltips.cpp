@@ -243,8 +243,10 @@ tooltip_runtime_probe_result run_tooltip_runtime_probe(bool dark_mode) noexcept 
             std::wcscmp(first_buffer, second_buffer) != 0;
         result.unicode_roundtrip = first_read && std::wcscmp(first_buffer, first_text) == 0;
 
-        SendMessageW(tooltips.window(), TTM_SETDELAYTIME, TTDT_INITIAL, 10);
-        SendMessageW(tooltips.window(), TTM_SETDELAYTIME, TTDT_AUTOPOP, 100);
+        // Realistic hover timing: prior 10/100 ms artificial diagnostic
+        // windows may auto-dismiss before a hosted desktop paints the tip.
+        SendMessageW(tooltips.window(), TTM_SETDELAYTIME, TTDT_INITIAL, 200);
+        SendMessageW(tooltips.window(), TTM_SETDELAYTIME, TTDT_AUTOPOP, 5000);
         ShowWindow(parent, SW_SHOW);
         UpdateWindow(parent);
         SetForegroundWindow(parent);
@@ -275,7 +277,7 @@ tooltip_runtime_probe_result run_tooltip_runtime_probe(bool dark_mode) noexcept 
         ClientToScreen(first, &relay.pt);
         PostMessageW(first, WM_MOUSEMOVE, 0, MAKELPARAM(5, 5));
         SendMessageW(tooltips.window(), TTM_RELAYEVENT, 0, reinterpret_cast<LPARAM>(&relay));
-        const ULONGLONG appear_deadline = GetTickCount64() + 1000;
+        const ULONGLONG appear_deadline = GetTickCount64() + 1800;
         while (IsWindowVisible(tooltips.window()) == FALSE &&
             GetTickCount64() < appear_deadline) {
             MSG message = {};
