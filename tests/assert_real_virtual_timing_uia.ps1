@@ -93,10 +93,13 @@ try{
   }
   $current=[MetadataIsolationTimingWindowLocator]::Text(
     [MetadataIsolationTimingWindowLocator]::GetDlgItem($window,1103))
-  $edit=[MetadataIsolationTimingWindowLocator]::Text(
-    [MetadataIsolationTimingWindowLocator]::GetDlgItem($window,1104))
-  Write-Host ('TIMING_SYNTHETIC_CURRENT=['+$current+']')
-  Write-Host ('TIMING_SYNTHETIC_EDIT=['+$edit+']')
+  # GetWindowTextW cannot read EDIT control text across process boundaries.
+  # Use the native Windows UIA ValuePattern, as a real accessibility client.
+  $editHwnd=[MetadataIsolationTimingWindowLocator]::GetDlgItem($window,1104)
+  $editUi=[System.Windows.Automation.AutomationElement]::FromHandle($editHwnd)
+  if($null -eq $editUi){throw 'The real Virtual timing edit field is not accessible'}
+  $valuePattern=$editUi.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+  $edit=$valuePattern.Current.Value
   if($current -cne '00:00:30' -or $edit -cne $current){
     throw 'Real timing dialog did not load exact 75-frame INDEX 01 preimage'
   }
