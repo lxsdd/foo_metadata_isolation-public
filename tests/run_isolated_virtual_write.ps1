@@ -188,6 +188,7 @@ try {
         }
         Remove-Item -LiteralPath $inventory -Force
         $report = Invoke-IsolatedProbe '/metadata-isolation-probe-direct-guard-virtual-title'
+        Get-Content -LiteralPath $report | Select-Object -First 60 | ForEach-Object { Write-Host "GUARD_PROBE: $_" }
         & python tests/assert_isolated_write_guard.py $before $source $report
         if ($LASTEXITCODE -ne 0) { throw 'Direct Guard byte preservation failed' }
         Write-Host "REAL_HOST_DIRECT_VIRTUAL_WRITE_GUARD_$Architecture=PASS"
