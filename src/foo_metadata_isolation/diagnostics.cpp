@@ -30,6 +30,7 @@ enum class probe_mode {
     virtual_nochange,
     virtual_all_titles,
     direct_guard_virtual_title,
+    open_real_virtual_timing_dialog,
     chapterizer_title,
     physical_title,
     physical_all,
@@ -206,6 +207,7 @@ bool parse_probe_mode(const char* token, probe_mode& mode) {
         { "/metadata-isolation-probe-nochange", probe_mode::virtual_nochange },
         { "/metadata-isolation-probe-all-titles", probe_mode::virtual_all_titles },
         { "/metadata-isolation-probe-direct-guard-virtual-title", probe_mode::direct_guard_virtual_title },
+        { "/metadata-isolation-probe-open-real-virtual-timing", probe_mode::open_real_virtual_timing_dialog },
         { "/metadata-isolation-probe-chapterizer-title", probe_mode::chapterizer_title },
         { "/metadata-isolation-probe-physical-title", probe_mode::physical_title },
         { "/metadata-isolation-probe-physical-all", probe_mode::physical_all },
@@ -839,6 +841,48 @@ public:
         for (size_t index = 0; index < m_items.get_count(); ++index) {
             report << "handle_" << index << "_subsong="
                    << m_items[index]->get_subsong_index() << "\n";
+        }
+
+        if (m_mode == probe_mode::open_real_virtual_timing_dialog) {
+            // Built exclusively into the disposable CI probe component.
+            // Open the real production editor only for a uniquely marked
+            // synthetic three-track source. No simulated postimage or write.
+            try {
+                static constexpr char fixture_marker[] =
+                    "MI-DISPOSABLE-FOOBAR-TIMING-UI-V1";
+                pfc::string_formatter marker_path;
+                marker_path << path << ".metadata-isolation-timing-ui-fixture.txt";
+                file::ptr marker;
+                filesystem::g_open_read(marker, marker_path, fb2k::noAbort);
+                if (marker->get_size_ex(fb2k::noAbort) != sizeof(fixture_marker) - 1) {
+                    throw pfc::exception("Timing UI requires exact disposable fixture marker");
+                }
+                char actual[sizeof(fixture_marker)] = {};
+                marker->read_object(actual, sizeof(fixture_marker) - 1, fb2k::noAbort);
+                if (std::memcmp(actual, fixture_marker, sizeof(fixture_marker) - 1) != 0 ||
+                    pfc::stricmp_ascii(pfc::string_extension(path), "mp3") != 0 ||
+                    !cfg_enabled) {
+                    throw pfc::exception("Timing UI probe refuses unmarked or unprotected source");
+                }
+                input_info_reader::ptr source;
+                input_entry::g_open_for_info_read(source, nullptr, path, fb2k::noAbort);
+                if (source->get_subsong_count() != 3 || source->get_subsong(1) != 2) {
+                    throw pfc::exception("Timing UI fixture is not the expected three-track Cue");
+                }
+                file_info_impl virtual_info;
+                source->get_info(2, virtual_info, fb2k::noAbort);
+                const char* title = virtual_info.meta_get("TITLE", 0);
+                if (title == nullptr || std::strcmp(title, "Virtual Original Two") != 0) {
+                    throw pfc::exception("Timing UI fixture virtual preimage is unexpected");
+                }
+                source.release();
+                metadb_handle_list selected;
+                selected.add_item(metadb::get()->handle_create(path, 2));
+                edit_virtual_timing(selected);
+            } catch (const std::exception& error) {
+                FB2K_console_formatter() << "Metadata Isolation disposable timing UI probe rejected: " << error;
+            }
+            return;
         }
 
         if (m_mode == probe_mode::physical_audit_classifier) {
