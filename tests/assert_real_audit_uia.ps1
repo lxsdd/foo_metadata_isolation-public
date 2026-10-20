@@ -73,8 +73,9 @@ public static class MetadataIsolationWindowLocator {
     IntPtr button=GetDlgItem(window,1204);
     if (button==IntPtr.Zero || !IsWindowEnabled(button))
       throw new InvalidOperationException("Audit Rescan control unavailable");
-    if (!PostMessage(button,0x00F5,IntPtr.Zero,IntPtr.Zero))
-      throw new InvalidOperationException("Failed posting native Audit Rescan button click");
+    // BM_CLICK is a synchronous native button command and is processed on
+    // the target GUI thread before the host status is inspected.
+    SendMessage(button,0x00F5,IntPtr.Zero,IntPtr.Zero);
   }
   public static IntPtr FindOwned(int processId, string title) {
     IntPtr found=IntPtr.Zero;
