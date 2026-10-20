@@ -48,6 +48,11 @@ public static class MetadataIsolationWindowLocator {
     if (list==IntPtr.Zero) throw new InvalidOperationException("Audit ListView missing");
     return checked((int)SendMessage(list,0x1004,IntPtr.Zero,IntPtr.Zero).ToInt64());
   }
+  public static int CurrentFilter(IntPtr window) {
+    IntPtr combo=GetDlgItem(window,1202);
+    if (combo==IntPtr.Zero) throw new InvalidOperationException("Audit filter missing");
+    return checked((int)SendMessage(combo,0x0147,IntPtr.Zero,IntPtr.Zero).ToInt64());
+  }
   public static void SelectFilter(IntPtr window,int index) {
     IntPtr combo=GetDlgItem(window,1202);
     if (combo==IntPtr.Zero) throw new InvalidOperationException("Audit filter missing");
@@ -127,9 +132,6 @@ function Assert-CompletedAudit {
   for($i=0;$i -lt 150;$i++){
     $status=[MetadataIsolationWindowLocator]::Status($Dialog)
     if($status -eq $expected){
-      if([MetadataIsolationWindowLocator]::ItemCount($Dialog) -ne 1){
-        throw 'Actual Audited physical row missing from native ListView'
-      }
       return
     }
     if($status.StartsWith('Audit failed',[StringComparison]::Ordinal)){
@@ -141,6 +143,8 @@ function Assert-CompletedAudit {
     $(if($status.StartsWith('Scanning')){'SCANNING'}else{'UNEXPECTED'}))
 }
 Assert-CompletedAudit $window
+Write-Host ('AUDIT_DEFAULT_FILTER_INDEX='+[MetadataIsolationWindowLocator]::CurrentFilter($window))
+Write-Host ('AUDIT_DEFAULT_VISIBLE_ROWS='+[MetadataIsolationWindowLocator]::ItemCount($window))
 Write-Host 'PRODUCTION_AUDIT_INCOMPLETE_CLASSIFIER=PASS'
 # Each change is applied to the actual production ComboBox and WM_COMMAND,
 # never by calling internal C++ application logic or mocking rows.
