@@ -43,6 +43,17 @@ public static class MetadataIsolationTimingWindowLocator {
       throw new InvalidOperationException("Synthetic timing control did not respond");
     return result.ToInt64();
   }
+  [DllImport("user32.dll",EntryPoint="SendMessageTimeoutW",CharSet=CharSet.Unicode,SetLastError=true)]
+  static extern IntPtr SendMessageTimeoutText(IntPtr hwnd,uint message,IntPtr wParam,
+    StringBuilder output,uint flags,uint timeout,out IntPtr result);
+  public static string TextByNativeMessage(IntPtr hwnd) {
+    if(hwnd==IntPtr.Zero)throw new InvalidOperationException("Timing EDIT control missing");
+    var output=new StringBuilder(128);
+    IntPtr result;
+    if(SendMessageTimeoutText(hwnd,0x000D,new IntPtr(output.Capacity),output,2,3000,out result)==IntPtr.Zero)
+      throw new InvalidOperationException("Native EDIT WM_GETTEXT timed out");
+    return output.ToString();
+  }
   public static string Text(IntPtr hwnd) {
     if(hwnd==IntPtr.Zero) throw new InvalidOperationException("Timing control missing");
     var builder=new StringBuilder(512);
@@ -93,13 +104,10 @@ try{
   }
   $current=[MetadataIsolationTimingWindowLocator]::Text(
     [MetadataIsolationTimingWindowLocator]::GetDlgItem($window,1103))
-  # GetWindowTextW cannot read EDIT control text across process boundaries.
-  # Use the native Windows UIA ValuePattern, as a real accessibility client.
+  # This hosted UIA provider has no ValuePattern on native EDIT controls.
+  # WM_GETTEXT is a system-defined, cross-process marshalled Win32 message.
   $editHwnd=[MetadataIsolationTimingWindowLocator]::GetDlgItem($window,1104)
-  $editUi=[System.Windows.Automation.AutomationElement]::FromHandle($editHwnd)
-  if($null -eq $editUi){throw 'The real Virtual timing edit field is not accessible'}
-  $valuePattern=$editUi.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
-  $edit=$valuePattern.Current.Value
+  $edit=[MetadataIsolationTimingWindowLocator]::TextByNativeMessage($editHwnd)
   if($current -cne '00:00:30' -or $edit -cne $current){
     throw 'Real timing dialog did not load exact 75-frame INDEX 01 preimage'
   }
