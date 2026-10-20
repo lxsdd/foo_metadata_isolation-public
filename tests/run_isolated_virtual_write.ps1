@@ -123,21 +123,7 @@ try {
         Copy-Item -LiteralPath $source -Destination $before
         $inventory = Invoke-IsolatedProbe '/metadata-isolation-probe-embedded-cue-inventory'
         $inventoryText = Get-Content -LiteralPath $inventory -Raw
-        if ($inventoryText -notmatch '(?m)^inventory_subsong_count=2\s*
-    if ($null -ne $process) {
-        try {
-            if (-not $process.HasExited) {
-                Stop-Process -Id $process.Id -Force -ErrorAction Stop
-            }
-        } catch {
-            Write-Warning 'Could not stop disposable host process'
-        }
-    }
-    if (Test-Path -LiteralPath $root) {
-        Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-) {
+        if ($inventoryText -notmatch '(?m)^inventory_subsong_count=2[ \t\r\n]*$') {
             throw "Fixture not exposed as two tracks for $($case.name)"
         }
         if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne
