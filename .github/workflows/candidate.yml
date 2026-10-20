@@ -35,12 +35,12 @@ jobs:
             if($LASTEXITCODE -ne 0){throw "Static regression failed: $test"}
           }
       - name: HARD GATE - live foobar2000 Win32 component load
-        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@37abc33f4dd7048e66462d4bee4e69f9ffeedbc9
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@7acb670f96fff4f63e8f84d8ccb3a4c3f84b8c64
         with:
           architecture: Win32
           component-dll: build/foo_metadata_isolation.dll
       - name: HARD GATE - live foobar2000 x64 component load
-        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@37abc33f4dd7048e66462d4bee4e69f9ffeedbc9
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@7acb670f96fff4f63e8f84d8ccb3a4c3f84b8c64
         with:
           architecture: x64
           component-dll: build/x64/foo_metadata_isolation.dll
