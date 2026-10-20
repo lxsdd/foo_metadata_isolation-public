@@ -33,6 +33,49 @@ public static class MetadataIsolationWindowLocator {
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr window, StringBuilder output, int maxCount);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
+  [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr window, int controlId);
+  [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)]
+  private static extern IntPtr SendMessageTimeout(IntPtr window,uint message,IntPtr wParam,IntPtr lParam,uint flags,uint timeout,out IntPtr result);
+  [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr window);
+  [DllImport("user32.dll", EntryPoint="PostMessageW", SetLastError=true)] public static extern bool PostMessage(IntPtr window,uint message,IntPtr wParam,IntPtr lParam);
+  public static IntPtr SendMessage(IntPtr window,uint message,IntPtr wParam,IntPtr lParam) {
+    IntPtr result;
+    if (window==IntPtr.Zero || SendMessageTimeout(window,message,wParam,lParam,0x0002,2500,out result)==IntPtr.Zero)
+      throw new InvalidOperationException("Audited native control did not respond within 2.5s; message="+message.ToString("X"));
+    return result;
+  }
+  public static string Status(IntPtr window) {
+    IntPtr label=GetDlgItem(window,1201);
+    if (label==IntPtr.Zero) throw new InvalidOperationException("Audit status control missing");
+    var text=new StringBuilder(512);
+    GetWindowTextW(label,text,text.Capacity);
+    return text.ToString();
+  }
+  public static int ItemCount(IntPtr window) {
+    IntPtr list=GetDlgItem(window,1203);
+    if (list==IntPtr.Zero) throw new InvalidOperationException("Audit ListView missing");
+    return checked((int)SendMessage(list,0x1004,IntPtr.Zero,IntPtr.Zero).ToInt64());
+  }
+  public static int CurrentFilter(IntPtr window) {
+    IntPtr combo=GetDlgItem(window,1202);
+    if (combo==IntPtr.Zero) throw new InvalidOperationException("Audit filter missing");
+    return checked((int)SendMessage(combo,0x0147,IntPtr.Zero,IntPtr.Zero).ToInt64());
+  }
+  public static void SelectFilter(IntPtr window,int index) {
+    IntPtr combo=GetDlgItem(window,1202);
+    if (combo==IntPtr.Zero) throw new InvalidOperationException("Audit filter missing");
+    long selected=SendMessage(combo,0x014E,new IntPtr(index),IntPtr.Zero).ToInt64();
+    if (selected!=index) throw new InvalidOperationException("Audit filter selection rejected");
+    if (!PostMessage(window,0x0111,new IntPtr((1 << 16) | 1202),combo))
+      throw new InvalidOperationException("Failed posting native Audit filter changed notification");
+  }
+  public static void Rescan(IntPtr window) {
+    IntPtr button=GetDlgItem(window,1204);
+    if (button==IntPtr.Zero || !IsWindowEnabled(button))
+      throw new InvalidOperationException("Audit Rescan control unavailable");
+    if (!PostMessage(button,0x00F5,IntPtr.Zero,IntPtr.Zero))
+      throw new InvalidOperationException("Failed posting native Audit Rescan button click");
+  }
   public static IntPtr FindOwned(int processId, string title) {
     IntPtr found=IntPtr.Zero;
     int count=0;
@@ -91,47 +134,80 @@ if($reopened -eq [IntPtr]::Zero -or $reopened -ne $window){
   throw 'Real Audit dialog duplicated or failed to reuse process-owned HWND'
 }
 Write-Host 'PRODUCTION_AUDIT_MODELESS_REUSE=PASS'
-
-# Synthetic test-build only. Query post-scan internal UI state in the real host
-# using strictly aggregate counters; no paths or metadata values are returned.
-$stateReport = $fixture + '.metadata-isolation-probe.txt'
-if (Test-Path -LiteralPath $stateReport) { throw 'Stale Audit state report' }
-$started = Start-Process -FilePath $Executable -WorkingDirectory $Workdir -ArgumentList @(
-  '/metadata-isolation-probe-audit-internal-ui-state', ('"' + $fixture + '"')) -PassThru
-if (-not $started.WaitForExit(15000) -or $started.ExitCode -ne 0) {
-  throw 'Synthetic Audit internal state probe launcher failed'
-}
-$ready = $false
-for ($i = 0; $i -lt 100; $i++) {
-  if (Test-Path -LiteralPath $stateReport) {
-    if ((Get-Item -LiteralPath $stateReport).Length -gt 0) { $ready = $true; break }
+# The source is intentionally INCOMPLETE: physical DATE is absent while
+# TITLE/ARTIST/ALBUM/GENRE and the embedded CUESHEET exist.
+function Assert-CompletedAudit {
+  param([IntPtr]$Dialog)
+  $expected = 'Audited 1 embedded-Cue physical files: 1 problems, 0 OK'
+  for($i=0;$i -lt 150;$i++){
+    $status=[MetadataIsolationWindowLocator]::Status($Dialog)
+    if($status -eq $expected){
+      return
+    }
+    if($status.StartsWith('Audit failed',[StringComparison]::Ordinal)){
+      throw 'Actual Audit reports a physical metadata read failure'
+    }
+    Start-Sleep -Milliseconds 100
   }
-  Start-Sleep -Milliseconds 100
+  throw ('Actual read-only audit did not complete with expected classification; status class=' +
+    $(if($status.StartsWith('Scanning')){'SCANNING'}else{'UNEXPECTED'}))
 }
-if (-not $ready) { throw 'Audit internal state report unavailable' }
-$fields = @{}
-foreach ($line in ((Get-Content -LiteralPath $stateReport -Raw) -split '\r?\n')) {
-  if ($line -match '^([a-z_]+)=(.*)$') { $fields[$Matches[1]] = $Matches[2] }
-}
-Remove-Item -LiteralPath $stateReport -Force
-foreach ($key in @('audit_insert_result','audit_insert_error','audit_list_style','audit_list_unicode','audit_cached_valid','audit_resolved_valid','audit_handles_equal','audit_actual_rows')) { if ($fields.ContainsKey($key)) { Write-Host ('AUDIT_INSERT_DIAG_' + $key.ToUpperInvariant() + '=' + $fields[$key]) } }
-$expectedState = @{
-  audit_model_rows = '1'
-  audit_filtered_rows = '1'
-  audit_native_rows = '1'
-  audit_filter_index = '0'
-  audit_list_visible = 'true'
-  write_result = 'audit_internal_state_readonly'
-}
-foreach ($field in @('audit_model_rows','audit_filtered_rows','audit_native_rows','audit_filter_index','audit_list_visible','write_result')) {
-  if (-not $fields.ContainsKey($field)) { throw "Missing in-process Audit evidence: $field" }
-  Write-Host ('AUDIT_IN_PROCESS_' + $field.ToUpperInvariant() + '=' + $fields[$field])
-  if ($fields[$field] -cne $expectedState[$field]) {
-    throw "In-process Audit post-scan invariant fails: $field"
-  }
-}
-Write-Host 'PRODUCTION_AUDIT_IN_PROCESS_ROW_CONSISTENCY=PASS'
+Assert-CompletedAudit $window
+Write-Host ('AUDIT_DEFAULT_FILTER_INDEX='+[MetadataIsolationWindowLocator]::CurrentFilter($window))
+Write-Host ('AUDIT_DEFAULT_VISIBLE_ROWS='+[MetadataIsolationWindowLocator]::ItemCount($window))
+if ([MetadataIsolationWindowLocator]::ItemCount($window) -ne 1) { throw 'Audit results list must contain exactly one synthetic problem row' }
+# Independent UIA view of the actual native SysListView32 (no Win32 messages).
+$ownedList=[MetadataIsolationWindowLocator]::GetDlgItem($window,1203)
+$uiList=[System.Windows.Automation.AutomationElement]::FromHandle($ownedList)
+if($null -eq $uiList){throw 'Native Audit ListView is not exposed through Windows UIA'}
+$uiRows=$uiList.FindAll(
+  [System.Windows.Automation.TreeScope]::Descendants,
+  [System.Windows.Automation.PropertyCondition]::new(
+    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+    [System.Windows.Automation.ControlType]::DataItem))
+Write-Host ('AUDIT_DEFAULT_UIA_DATAITEMS='+$uiRows.Count)
+if ($uiRows.Count -ne 1) { throw 'Real Audit UIA result list must expose one problem DataItem' }
 
+Write-Host 'PRODUCTION_AUDIT_INCOMPLETE_CLASSIFIER=PASS'
+# Each change is applied to the actual production ComboBox and WM_COMMAND,
+# never by calling internal C++ application logic or mocking rows.
+foreach($entry in @(
+  @{Name='All';Index=1;Expected=1},
+  @{Name='OK';Index=6;Expected=0},
+  @{Name='Incomplete';Index=3;Expected=1},
+  @{Name='Empty';Index=2;Expected=0},
+  @{Name='Problems';Index=0;Expected=1},
+  @{Name='Mismatch';Index=4;Expected=0},
+  @{Name='Review';Index=5;Expected=0}
+)){
+  [MetadataIsolationWindowLocator]::SelectFilter($window,[int]$entry.Index)
+  $seen=-1
+  for($retry=0;$retry -lt 50;$retry++){
+    $seen=[MetadataIsolationWindowLocator]::ItemCount($window)
+    if($seen -eq [int]$entry.Expected){break}
+    Start-Sleep -Milliseconds 100
+  }
+  if($seen -ne [int]$entry.Expected){
+    throw ('Actual native audit '+$entry.Name+' filter count incorrect; expected '+$entry.Expected+' observed '+$seen)
+  }
+  Write-Host ('AUDIT_NATIVE_FILTER_'+$entry.Name.ToUpperInvariant()+'=PASS')
+}
+Write-Host 'PRODUCTION_AUDIT_NATIVE_FILTER_MATRIX=PASS'
+[MetadataIsolationWindowLocator]::SelectFilter($window,0)
+# BM_CLICK is a real native button event, not a direct test callback.
+[MetadataIsolationWindowLocator]::Rescan($window)
+$scanObserved=$false
+for($i=0;$i -lt 40;$i++){
+  $pending=[MetadataIsolationWindowLocator]::Status($window)
+  if($pending.StartsWith('Scanning physical metadata') -or
+     $pending.StartsWith('Finding embedded-Cue physical sources')){ $scanObserved=$true;break }
+  Start-Sleep -Milliseconds 50
+}
+if(-not $scanObserved){
+  throw 'Native Rescan did not trigger an observable read-only scan'
+}
+Assert-CompletedAudit $window
+Write-Host 'PRODUCTION_AUDIT_NATIVE_RESCAN=PASS'
 if((Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash -ne $before){
   throw 'Real Audit UIA test modified synthetic MP3'
 }
