@@ -4,6 +4,7 @@
 #include "ui_tooltips.h"
 #include "physical_targets.h"
 #include "physical_metadata_audit.h"
+#include "physical_metadata_audit_ui.h"
 #include "preferences.h"
 #include "write_guard.h"
 #include "virtual_edit_session.h"
@@ -155,6 +156,7 @@ enum class probe_mode {
     projection_benchmark_inventory,
     physical_audit_classifier,
     logging_contract,
+    audit_internal_ui_state,
     logging_outcomes,
     logging_standard,
     logging_verbose,
@@ -330,6 +332,7 @@ bool parse_probe_mode(const char* token, probe_mode& mode) {
         { "/metadata-isolation-probe-projection-benchmark-inventory", probe_mode::projection_benchmark_inventory },
         { "/metadata-isolation-probe-physical-audit-classifier", probe_mode::physical_audit_classifier },
         { "/metadata-isolation-probe-logging-contract", probe_mode::logging_contract },
+        { "/metadata-isolation-probe-audit-internal-ui-state", probe_mode::audit_internal_ui_state },
         { "/metadata-isolation-probe-logging-outcomes", probe_mode::logging_outcomes },
         { "/metadata-isolation-probe-logging-standard", probe_mode::logging_standard },
         { "/metadata-isolation-probe-logging-verbose", probe_mode::logging_verbose },
@@ -1367,6 +1370,9 @@ public:
                     report << "structured_log=" << line.c_str() << "\n";
                 }
                 report << "write_result=logging_outcomes_complete\n";
+            } else if (m_mode == probe_mode::audit_internal_ui_state) {
+                read_audit_internal_state_for_test(report);
+                report << "write_result=audit_internal_state_readonly\n";
             } else if (m_mode == probe_mode::logging_contract) {
                 const char* unicode_value =
                     "Gr" "\xC3\xBC" "\xC3\x9F" "e-"
