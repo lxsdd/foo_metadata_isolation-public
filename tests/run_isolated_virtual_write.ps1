@@ -6,7 +6,8 @@ param(
     [switch]$RunDirectGuard,
     [switch]$RunPhysicalMetadata,
     [switch]$RunVirtualReplayGain,
-    [switch]$RunCueTiming
+    [switch]$RunCueTiming,
+    [switch]$RunUiContracts
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -269,6 +270,31 @@ try {
         & python tests/assert_isolated_write_guard.py $before $source $report
         if ($LASTEXITCODE -ne 0) { throw 'Direct Guard byte preservation failed' }
         Write-Host "REAL_HOST_DIRECT_VIRTUAL_WRITE_GUARD_$Architecture=PASS"
+    }
+
+    if ($RunUiContracts) {
+        $caseDir = Join-Path $root 'ui-contracts'
+        $source = Join-Path $caseDir 'track-01.mp3'
+        $before = Join-Path $caseDir 'track-01.mp3.before'
+        & python tests/make_isolated_embedded_mp3.py $source
+        if ($LASTEXITCODE -ne 0) { throw 'UI contract fixture generation failed' }
+        Copy-Item -LiteralPath $source -Destination $before
+        foreach ($scenario in @('logging','tooltip-light','tooltip-dark')) {
+            $command = switch ($scenario) {
+                'logging' { '/metadata-isolation-probe-logging-contract' }
+                'tooltip-light' { '/metadata-isolation-probe-tooltip-contract' }
+                'tooltip-dark' { '/metadata-isolation-probe-tooltip-contract-dark' }
+            }
+            $report = Invoke-IsolatedProbe $command
+            & python tests/assert_isolated_ux_contracts.py $report --scenario $scenario
+            if ($LASTEXITCODE -ne 0) { throw "Native UI contract failed: $scenario" }
+            Remove-Item -LiteralPath $report -Force
+            if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne
+                (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
+                throw "UI contract altered disposable audio: $scenario"
+            }
+            Write-Host ('REAL_HOST_UI_' + $Architecture + '=' + $scenario + ':PASS')
+        }
     }
 
 } finally {
