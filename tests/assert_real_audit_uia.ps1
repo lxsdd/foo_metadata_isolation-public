@@ -251,11 +251,13 @@ Write-Host ('AUDIT_MSAA_INSPECTED_CHILDREN='+$msaaDetails[1])
 Write-Host ('AUDIT_MSAA_LISTITEM_ROLES='+$msaaDetails[2])
 Write-Host ('AUDIT_MSAA_SYNTHETIC_INCOMPLETE_NAMES='+$msaaDetails[3])
 Write-Host ('AUDIT_MSAA_DETAIL_FAILURES='+$msaaDetails[4])
-if($msaa[0] -eq 0 -and $msaa[1] -eq 1){
-  Write-Host 'PRODUCTION_AUDIT_MSAA_SINGLE_ROW=PASS'
-}else{
-  Write-Host 'PRODUCTION_AUDIT_MSAA_SINGLE_ROW=PENDING_UNVERIFIED'
+if($msaa[0] -ne 0 -or $msaaDetails[0] -ne 0 -or
+   $msaa[1] -ne $msaaDetails[1] -or
+   $msaaDetails[2] -ne 1 -or $msaaDetails[3] -ne 1 -or
+   $msaaDetails[4] -ne 0){
+  throw 'Native Audit MSAA accessibility does not expose exactly one readable synthetic INCOMPLETE result row'
 }
+Write-Host 'PRODUCTION_AUDIT_MSAA_SINGLE_ROW=PASS'
 $uiRowCount=$uiDataRows.Count+$uiListRows.Count
 if($uiRowCount -gt 0){
   if($uiRowCount -ne 1){ throw 'Native Audit UIA has inconsistent result child count' }
