@@ -2,6 +2,14 @@
 
 Current version: `1.0.0-dev`. This document records **source-only draft CI qualification** in the public repository. It does not supersede private historical acceptance reports and does not authorize a merge, tag or release.
 
+## Previously completed qualification (historical record)
+
+| Phase | Scope | Verdict | Notes |
+|---|---|---|---|
+| 14 | additional formats and Virtual mechanisms | PASS / closed | Historical evidence retained in private recovery repository |
+
+This historical qualification is not a claim that newer public CI branches were merged or released. The read-only Physical Metadata Audit identifies completeness issues; it does not automatically repair any tags.
+
 ## Exact source-only host evidence (20 October 2026)
 
 Latest independently tested source head before this documentation update: `efe2db2249c5e5924235c72f7edc4260cd672101`.
