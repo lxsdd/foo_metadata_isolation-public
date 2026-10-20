@@ -19,7 +19,7 @@ def main():
     assert re.search(r"(?m)^production_timing_document_count=1\s*$",report),"not one Cue document"
     if a.scenario=="index01-change":
         assert re.search(r"(?m)^write_result=committed\s*$",report),"valid INDEX write not committed"
-        old=b"    INDEX 01 00:30:00"
+        old=b"    INDEX 01 00:00:30"
         new=b"    INDEX 01 00:30:35"
         assert old_cue.count(old)==1,"missing unique old INDEX"
         assert new_cue==old_cue.replace(old,new),"timing diff modified unrelated Cue bytes"
