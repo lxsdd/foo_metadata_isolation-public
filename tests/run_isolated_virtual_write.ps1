@@ -176,6 +176,7 @@ try {
         & python tests/make_isolated_embedded_mp3.py $source
         if ($LASTEXITCODE -ne 0) { throw 'Direct Guard fixture generation failed' }
         Copy-Item -LiteralPath $source -Destination $before
+        [IO.File]::WriteAllText(($source + '.metadata-isolation-guard-fixture.txt'), 'MI-DISPOSABLE-FOOBAR-GUARD-V1', [Text.UTF8Encoding]::new($false))
         $inventory = Invoke-IsolatedProbe '/metadata-isolation-probe-embedded-cue-inventory'
         $inventoryText = Get-Content -LiteralPath $inventory -Raw
         $inventoryLines = @($inventoryText.Split([char]10) | ForEach-Object { $_.Trim() })
