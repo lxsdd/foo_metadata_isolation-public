@@ -95,6 +95,8 @@ try{
     [MetadataIsolationTimingWindowLocator]::GetDlgItem($window,1103))
   $edit=[MetadataIsolationTimingWindowLocator]::Text(
     [MetadataIsolationTimingWindowLocator]::GetDlgItem($window,1104))
+  Write-Host ('TIMING_SYNTHETIC_CURRENT=['+$current+']')
+  Write-Host ('TIMING_SYNTHETIC_EDIT=['+$edit+']')
   if($current -cne '00:00:30' -or $edit -cne $current){
     throw 'Real timing dialog did not load exact 75-frame INDEX 01 preimage'
   }
