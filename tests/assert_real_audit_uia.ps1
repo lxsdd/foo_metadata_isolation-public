@@ -197,8 +197,14 @@ public static class IsolatedAuditMsaa {
   [ComImport, Guid("618736e0-3c3d-11cf-810c-00aa00389b71"), InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
   public interface IAccessibleMinimal {
     [DispId(-5001)] int accChildCount { get; }
-    [DispId(-5006)] object accRole(object child);
-    [DispId(-5003)] string accName(object child);
+  }
+  [ComImport, Guid("618736e0-3c3d-11cf-810c-00aa00389b71"), InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+  public interface IAccessibleRole {
+    [DispId(-5006)] object this[object child] { get; }
+  }
+  [ComImport, Guid("618736e0-3c3d-11cf-810c-00aa00389b71"), InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+  public interface IAccessibleName {
+    [DispId(-5003)] string this[object child] { get; }
   }
   [DllImport("oleacc.dll", ExactSpelling=true)]
   private static extern int AccessibleObjectFromWindow(
@@ -212,11 +218,13 @@ public static class IsolatedAuditMsaa {
     try {
       int limit = Math.Min(32, accessible.accChildCount);
       int listItems=0, expectedNames=0, readFailures=0;
+      IAccessibleRole roleView=(IAccessibleRole)accessible;
+      IAccessibleName nameView=(IAccessibleName)accessible;
       for (int i=1; i<=limit; i++) {
         try {
-          object role = accessible.accRole(i);
+          object role = roleView[i];
           if (role != null && Convert.ToInt32(role)==34) listItems++;
-          var label = accessible.accName(i);
+          var label = nameView[i];
           if (label != null && label.IndexOf("Incomplete", StringComparison.OrdinalIgnoreCase)>=0) expectedNames++;
         } catch (Exception) { readFailures++; }
       }
