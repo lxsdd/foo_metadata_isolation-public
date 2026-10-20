@@ -173,6 +173,54 @@ $uiListRows=$uiList.FindAll(
     [System.Windows.Automation.ControlType]::ListItem))
 Write-Host ('AUDIT_DEFAULT_UIA_DATAITEMS='+$uiDataRows.Count)
 Write-Host ('AUDIT_DEFAULT_UIA_LISTITEMS='+$uiListRows.Count)
+
+
+# Test-only accessibility diagnostics. Native ListView counts are evaluated
+# separately; these observations may be PENDING, never forged into a UIA PASS.
+$rawWalker=[System.Windows.Automation.TreeWalker]::RawViewWalker
+$rawChild=$rawWalker.GetFirstChild($uiList)
+$rawCount=0
+$rawListItems=0
+while($null -ne $rawChild -and $rawCount -lt 64){
+  $rawCount++
+  $type=$rawChild.Current.ControlType
+  if($type -eq [System.Windows.Automation.ControlType]::ListItem -or
+     $type -eq [System.Windows.Automation.ControlType]::DataItem){$rawListItems++}
+  $rawChild=$rawWalker.GetNextSibling($rawChild)
+}
+Write-Host ('AUDIT_UIA_RAW_CHILDREN='+$rawCount)
+Write-Host ('AUDIT_UIA_RAW_DIRECT_ROW_CHILDREN='+$rawListItems)
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class IsolatedAuditMsaa {
+  [ComImport, Guid("618736e0-3c3d-11cf-810c-00aa00389b71"), InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+  public interface IAccessibleMinimal {
+    [DispId(-5001)] int accChildCount { get; }
+  }
+  [DllImport("oleacc.dll", ExactSpelling=true)]
+  private static extern int AccessibleObjectFromWindow(
+     IntPtr hwnd, int dwObjectID, ref Guid riid,
+     [MarshalAs(UnmanagedType.Interface)] out IAccessibleMinimal accessible);
+  public static int[] ChildCount(IntPtr hwnd) {
+    var iid = new Guid("618736e0-3c3d-11cf-810c-00aa00389b71");
+    IAccessibleMinimal accessible = null;
+    int hr = AccessibleObjectFromWindow(hwnd, -4, ref iid, out accessible);
+    if (hr != 0 || accessible == null) return new int[] { hr, -1 };
+    try { return new int[] { hr, accessible.accChildCount }; }
+    catch (COMException ex) { return new int[] { ex.ErrorCode, -2 }; }
+    finally { if (accessible != null) Marshal.ReleaseComObject(accessible); }
+  }
+}
+'@
+$msaa=[IsolatedAuditMsaa]::ChildCount($ownedList)
+Write-Host ('AUDIT_MSAA_HRESULT='+$msaa[0])
+Write-Host ('AUDIT_MSAA_CHILDREN='+$msaa[1])
+if($msaa[0] -eq 0 -and $msaa[1] -eq 1){
+  Write-Host 'PRODUCTION_AUDIT_MSAA_SINGLE_ROW=PASS'
+}else{
+  Write-Host 'PRODUCTION_AUDIT_MSAA_SINGLE_ROW=PENDING_UNVERIFIED'
+}
 $uiRowCount=$uiDataRows.Count+$uiListRows.Count
 if($uiRowCount -gt 0){
   if($uiRowCount -ne 1){ throw 'Native Audit UIA has inconsistent result child count' }
