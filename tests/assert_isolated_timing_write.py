@@ -20,7 +20,7 @@ def main():
     if a.scenario=="index01-change":
         assert re.search(r"(?m)^write_result=committed\s*$",report),"valid INDEX write not committed"
         old=b"    INDEX 01 00:00:30"
-        new=b"    INDEX 01 00:30:35"
+        new=b"    INDEX 01 00:00:35"
         assert old_cue.count(old)==1,"missing unique old INDEX"
         assert new_cue==old_cue.replace(old,new),"timing diff modified unrelated Cue bytes"
         assert old_cue!=new_cue,"no-op timing write"
