@@ -168,10 +168,8 @@ try {
         }
     }
 
-
     if ($RunDirectGuard) {
-        # Last test: unsafe host writer may display the Guard warning dialog.
-        # Never allow a modal UI to disturb subsequent scenario evidence.
+        # Run last: direct host Guard message may be modal.
         $caseDir = Join-Path $root 'guard-direct'
         $source = Join-Path $caseDir 'track-01.mp3'
         $before = Join-Path $caseDir 'track-01.mp3.before'
@@ -180,21 +178,9 @@ try {
         Copy-Item -LiteralPath $source -Destination $before
         $inventory = Invoke-IsolatedProbe '/metadata-isolation-probe-embedded-cue-inventory'
         $inventoryText = Get-Content -LiteralPath $inventory -Raw
-        if ($inventoryText -notmatch '(?m)^inventory_subsong_count=2[ \t\r\n]* {
-        try {
-            if (-not $process.HasExited) {
-                Stop-Process -Id $process.Id -Force -ErrorAction Stop
-            }
-        } catch {
-            Write-Warning 'Could not stop disposable host process'
-        }
-    }
-    if (Test-Path -LiteralPath $root) {
-        Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-) {
-            throw 'Direct Guard fixture not recognized as 2 embedded virtual tracks'
+        $inventoryLines = @($inventoryText.Split([char]10) | ForEach-Object { $_.Trim() })
+        if (-not ($inventoryLines -ccontains 'inventory_subsong_count=2')) {
+            throw 'Direct Guard fixture did not expose exactly two tracks'
         }
         if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne
             (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
@@ -203,7 +189,7 @@ try {
         Remove-Item -LiteralPath $inventory -Force
         $report = Invoke-IsolatedProbe '/metadata-isolation-probe-direct-guard-virtual-title'
         & python tests/assert_isolated_write_guard.py $before $source $report
-        if ($LASTEXITCODE -ne 0) { throw 'Direct virtual Write Guard must preserve source exactly' }
+        if ($LASTEXITCODE -ne 0) { throw 'Direct Guard byte preservation failed' }
         Write-Host "REAL_HOST_DIRECT_VIRTUAL_WRITE_GUARD_$Architecture=PASS"
     }
 
