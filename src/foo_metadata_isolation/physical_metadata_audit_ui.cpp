@@ -880,6 +880,16 @@ public:
                 return sort_direction > 0 ? result < 0 : result > 0;
             });
 
+        // ListView sends synchronous LVN_ITEMCHANGED while rows are replaced.
+        // Updating selection-dependent buttons from inside that notification
+        // re-enters the same control. Defer the single update until the batch
+        // finishes, including during exceptions.
+        struct refresh_scope {
+            bool& active;
+            explicit refresh_scope(bool& target) : active(target) { active = true; }
+            ~refresh_scope() { active = false; }
+        } rebuilding(m_refreshing_list);
+
         SendMessageW(m_list, WM_SETREDRAW, FALSE, 0);
         ListView_DeleteAllItems(m_list);
         for (size_t display_index = 0; display_index < visible.size(); ++display_index) {
@@ -1089,7 +1099,7 @@ public:
                 edit_selected_physical();
                 return 0;
             case LVN_ITEMCHANGED:
-                update_edit_enabled();
+                if (!m_refreshing_list) update_edit_enabled();
                 return 0;
             case LVN_GETINFOTIPW: {
                 auto* tip = reinterpret_cast<NMLVGETINFOTIPW*>(header);
@@ -1291,6 +1301,7 @@ private:
     bool m_close_when_done = false;
     bool m_pending_scan = false;
     bool m_modeless_registered = false;
+    bool m_refreshing_list = false;
     audit_scope m_pending_scope = audit_scope::library;
     metadb_handle_list m_pending_seed;
 };
