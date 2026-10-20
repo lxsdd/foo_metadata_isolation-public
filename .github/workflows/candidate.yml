@@ -35,21 +35,23 @@ jobs:
             if($LASTEXITCODE -ne 0){throw "Static regression failed: $test"}
           }
       - name: HARD GATE - live foobar2000 Win32 component load
-        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@99cc4b8c31d4ac8e640da0c375675566dc44762e
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@4a562946975b610651a0a4e71a422699a7a604d9
         with:
           architecture: Win32
           component-dll: build/foo_metadata_isolation.dll
           context-command: 'Metadata Isolation/Audit physical metadata for selection...'
           expected-window-title: 'Metadata Isolation - Physical Metadata Audit'
           required-control-ids: '1201,1202,1203,1204,1208'
+          context-fixture: external-cue
       - name: HARD GATE - live foobar2000 x64 component load
-        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@99cc4b8c31d4ac8e640da0c375675566dc44762e
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@4a562946975b610651a0a4e71a422699a7a604d9
         with:
           architecture: x64
           component-dll: build/x64/foo_metadata_isolation.dll
           context-command: 'Metadata Isolation/Audit physical metadata for selection...'
           expected-window-title: 'Metadata Isolation - Physical Metadata Audit'
           required-control-ids: '1201,1202,1203,1204,1208'
+          context-fixture: external-cue
       - name: Package and verify exact candidate
         shell: pwsh
         run: ./ci/package.ps1 -BuildRoot . -ComponentId foo_metadata_isolation
