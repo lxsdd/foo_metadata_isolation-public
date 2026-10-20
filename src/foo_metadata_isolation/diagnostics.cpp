@@ -1429,6 +1429,8 @@ public:
                        << (tooltip.mouse_event_sent ? "true" : "false") << "\n"
                        << "tooltip_current_tool_present="
                        << (tooltip.current_tool_present ? "true" : "false") << "\n"
+                       << "tooltip_forced_popup_visible="
+                       << (tooltip.forced_popup_visible ? "true" : "false") << "\n"
                        << "tooltip_hover_appeared="
                        << (tooltip.hover_appeared ? "true" : "false") << "\n"
                        << "tooltip_hover_dismissed="
