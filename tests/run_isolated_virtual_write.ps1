@@ -105,6 +105,53 @@ try {
     & python tests/assert_isolated_virtual_write.py $before $source $report
     if ($LASTEXITCODE -ne 0) { throw 'Independent virtual-write oracle failed' }
     Write-Host "REAL_HOST_VIRTUAL_TITLE_WRITE_$Architecture=PASS"
+
+    # New, completely separate original fixture for each safety outcome.
+    # No output from an earlier scenario can influence any later case.
+    $cases = @(
+        @{ name='partial-style'; token='/metadata-isolation-probe-production-shadow-partial-style' },
+        @{ name='strict'; token='/metadata-isolation-probe-production-shadow-partial-style-strict' },
+        @{ name='blocking'; token='/metadata-isolation-probe-production-shadow-mixed' },
+        @{ name='rollback'; token='/metadata-isolation-probe-production-shadow-rollback' }
+    )
+    foreach ($case in $cases) {
+        $caseDir = Join-Path $root $case.name
+        $source = Join-Path $caseDir 'track-01.mp3'
+        $before = Join-Path $caseDir 'track-01.mp3.before'
+        & python tests/make_isolated_embedded_mp3.py $source
+        if ($LASTEXITCODE -ne 0) { throw "Fixture generation failed for $($case.name)" }
+        Copy-Item -LiteralPath $source -Destination $before
+        $inventory = Invoke-IsolatedProbe '/metadata-isolation-probe-embedded-cue-inventory'
+        $inventoryText = Get-Content -LiteralPath $inventory -Raw
+        if ($inventoryText -notmatch '(?m)^inventory_subsong_count=2\s*
+    if ($null -ne $process) {
+        try {
+            if (-not $process.HasExited) {
+                Stop-Process -Id $process.Id -Force -ErrorAction Stop
+            }
+        } catch {
+            Write-Warning 'Could not stop disposable host process'
+        }
+    }
+    if (Test-Path -LiteralPath $root) {
+        Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+) {
+            throw "Fixture not exposed as two tracks for $($case.name)"
+        }
+        if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne
+            (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
+            throw "Read-only inventory modified $($case.name)"
+        }
+        Remove-Item -LiteralPath $inventory -Force
+        $report = Invoke-IsolatedProbe $case.token
+        & python tests/assert_isolated_virtual_write.py $before $source $report --scenario $case.name
+        if ($LASTEXITCODE -ne 0) {
+            throw "Independent scenario oracle failed: $($case.name)"
+        }
+        Write-Host "REAL_HOST_$($case.name.ToUpperInvariant())_$Architecture=PASS"
+    }
 } finally {
     if ($null -ne $process) {
         try {
