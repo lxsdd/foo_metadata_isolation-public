@@ -8,7 +8,8 @@ param(
     [switch]$RunVirtualReplayGain,
     [switch]$RunCueTiming,
     [switch]$RunUiContracts,
-    [switch]$RunRealAuditUia
+    [switch]$RunRealAuditUia,
+    [switch]$RunRealTimingUia
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -307,6 +308,16 @@ try {
         $adapter = Join-Path (Get-Location).Path '.ci_shared/scripts/windows-ui-accessibility.ps1'
         & ./tests/assert_real_audit_uia.ps1 -FoobarPid $process.Id -Executable $exe -Workdir $portable -FixturePath $source -AdapterPath $adapter
         Write-Host "REAL_HOST_PRODUCTION_AUDIT_UIA_$Architecture=PASS"
+    }
+
+    if ($RunRealTimingUia) {
+        $caseDir = Join-Path $root 'real-virtual-timing-ui'
+        $source = Join-Path $caseDir 'track-01.mp3'
+        & python tests/make_isolated_timing_mp3.py $source
+        if ($LASTEXITCODE -ne 0) { throw 'Real Virtual timing UI fixture creation failed' }
+        $adapter = Join-Path (Get-Location).Path '.ci_shared/scripts/windows-ui-accessibility.ps1'
+        & ./tests/assert_real_virtual_timing_uia.ps1 -FoobarPid $process.Id -Executable $exe -Workdir $portable -FixturePath $source -AdapterPath $adapter
+        Write-Host ('REAL_HOST_PRODUCTION_VIRTUAL_TIMING_UIA_' + $Architecture + '=PASS')
     }
 
 } finally {
