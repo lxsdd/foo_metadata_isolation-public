@@ -167,6 +167,80 @@ $uiRows=$uiList.FindAll(
 Write-Host ('AUDIT_DEFAULT_UIA_DATAITEMS='+$uiRows.Count)
 
 Write-Host 'PRODUCTION_AUDIT_INCOMPLETE_CLASSIFIER=PASS'
+# Read the actual in-process model and ListView after completion.
+# Test-only route returns aggregate counters, never media paths/tag values.
+$probeReport = $fixture + '.metadata-isolation-probe.txt'
+if(Test-Path -LiteralPath $probeReport){throw 'Refusing to read stale Audit internal report'}
+$cli = '/metadata-isolation-probe-audit-internal-ui-state'
+$launcher=Start-Process -FilePath $Executable -WorkingDirectory $Workdir -ArgumentList @($cli,('"'+$fixture+'"')) -PassThru
+if(-not $launcher.WaitForExit(15000) -or $launcher.ExitCode -ne 0){throw 'Audit internal probe launcher failed'}
+$reportReady=$false
+for($i=0;$i -lt 100;$i++){
+  if(Test-Path -LiteralPath $probeReport){
+    if((Get-Item -LiteralPath $probeReport).Length -gt 0){$reportReady=$true;break}
+  }
+  Start-Sleep -Milliseconds 100
+}
+if(-not $reportReady){throw 'Audit internal state probe did not complete'}
+$stateText=Get-Content -LiteralPath $probeReport -Raw
+Remove-Item -LiteralPath $probeReport -Force
+$fields=@{}
+foreach($line in ($stateText -split '\r?\n')){
+  if($line -match '^([a-z_]+)=([^\r\n]*)# Each change is applied to the actual production ComboBox and WM_COMMAND,
+# never by calling internal C++ application logic or mocking rows.
+foreach($entry in @(
+  @{Name='All';Index=1;Expected=1},
+  @{Name='OK';Index=6;Expected=0},
+  @{Name='Incomplete';Index=3;Expected=1},
+  @{Name='Empty';Index=2;Expected=0},
+  @{Name='Problems';Index=0;Expected=1},
+  @{Name='Mismatch';Index=4;Expected=0},
+  @{Name='Review';Index=5;Expected=0}
+)){
+  [MetadataIsolationWindowLocator]::SelectFilter($window,[int]$entry.Index)
+  $seen=-1
+  for($retry=0;$retry -lt 50;$retry++){
+    $seen=[MetadataIsolationWindowLocator]::ItemCount($window)
+    if($seen -eq [int]$entry.Expected){break}
+    Start-Sleep -Milliseconds 100
+  }
+  if($seen -ne [int]$entry.Expected){
+    throw ('Actual native audit '+$entry.Name+' filter count incorrect; expected '+$entry.Expected+' observed '+$seen)
+  }
+  Write-Host ('AUDIT_NATIVE_FILTER_'+$entry.Name.ToUpperInvariant()+'=PASS')
+}
+Write-Host 'PRODUCTION_AUDIT_NATIVE_FILTER_MATRIX=PASS'
+[MetadataIsolationWindowLocator]::SelectFilter($window,0)
+# BM_CLICK is a real native button event, not a direct test callback.
+[MetadataIsolationWindowLocator]::Rescan($window)
+$scanObserved=$false
+for($i=0;$i -lt 40;$i++){
+  $pending=[MetadataIsolationWindowLocator]::Status($window)
+  if($pending.StartsWith('Scanning physical metadata') -or
+     $pending.StartsWith('Finding embedded-Cue physical sources')){ $scanObserved=$true;break }
+  Start-Sleep -Milliseconds 50
+}
+if(-not $scanObserved){
+  throw 'Native Rescan did not trigger an observable read-only scan'
+}
+Assert-CompletedAudit $window
+Write-Host 'PRODUCTION_AUDIT_NATIVE_RESCAN=PASS'
+if((Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash -ne $before){
+  throw 'Real Audit UIA test modified synthetic MP3'
+}
+Write-Host 'PRODUCTION_AUDIT_SYNTHETIC_MEDIA_UNCHANGED=PASS'
+){$fields[$Matches[1]]=$Matches[2]}
+}
+foreach($name in @('audit_model_rows','audit_filtered_rows','audit_native_rows','audit_filter_index','audit_list_visible')){
+  if(-not $fields.ContainsKey($name)){throw ('Internal Audit report lacks '+$name)}
+  Write-Host ('AUDIT_INTERNAL_'+$name.ToUpperInvariant()+'='+$fields[$name])
+}
+if($fields['audit_model_rows'] -ne '1' -or $fields['audit_filtered_rows'] -ne '1' -or
+   $fields['audit_native_rows'] -ne '1' -or $fields['audit_filter_index'] -ne '0' -or
+   $fields['audit_list_visible'] -ne 'true'){
+  throw 'Actual in-process Audit model and native ListView disagree on one visible incomplete source'
+}
+Write-Host 'PRODUCTION_AUDIT_IN_PROCESS_ROW_CONSISTENCY=PASS'
 # Each change is applied to the actual production ComboBox and WM_COMMAND,
 # never by calling internal C++ application logic or mocking rows.
 foreach($entry in @(
