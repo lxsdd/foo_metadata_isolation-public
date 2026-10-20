@@ -93,6 +93,10 @@ std::atomic_size_t g_audit_probe_filtered_rows{0};
 std::atomic_int g_audit_probe_native_rows{-1};
 std::atomic_int g_audit_probe_filter{-1};
 std::atomic_bool g_audit_probe_list_visible{false};
+std::atomic_int g_audit_probe_insert_result{-999};
+std::atomic_int g_audit_probe_insert_error{-1};
+std::atomic_int g_audit_probe_list_style{-1};
+std::atomic_int g_audit_probe_list_unicode{-1};
 #endif
 
 enum class audit_scope {
@@ -911,7 +915,14 @@ public:
             item.iSubItem = 0;
             item.pszText = const_cast<wchar_t*>(static_cast<const wchar_t*>(status));
             item.lParam = static_cast<LPARAM>(row_index);
+            SetLastError(ERROR_SUCCESS);
             const int inserted = ListView_InsertItem(m_list, &item);
+#if defined(FB2K_ENABLE_TEST_PROBES)
+            g_audit_probe_insert_result.store(inserted);
+            g_audit_probe_insert_error.store(static_cast<int>(GetLastError()));
+            g_audit_probe_list_style.store(static_cast<int>(GetWindowLongPtrW(m_list, GWL_STYLE)));
+            g_audit_probe_list_unicode.store(ListView_GetUnicodeFormat(m_list));
+#endif
             if (inserted < 0) continue;
 
             const std::string values[] = {
@@ -1362,6 +1373,10 @@ void read_audit_internal_state_for_test(pfc::string_base& output) {
     output << "audit_model_rows=" << g_audit_probe_model_rows.load() << "\n"
            << "audit_filtered_rows=" << g_audit_probe_filtered_rows.load() << "\n"
            << "audit_native_rows=" << g_audit_probe_native_rows.load() << "\n"
+           << "audit_insert_result=" << g_audit_probe_insert_result.load() << "\n"
+           << "audit_insert_error=" << g_audit_probe_insert_error.load() << "\n"
+           << "audit_list_style=" << g_audit_probe_list_style.load() << "\n"
+           << "audit_list_unicode=" << g_audit_probe_list_unicode.load() << "\n"
            << "audit_filter_index=" << g_audit_probe_filter.load() << "\n"
            << "audit_list_visible="
            << (g_audit_probe_list_visible.load() ? "true" : "false") << "\n";
