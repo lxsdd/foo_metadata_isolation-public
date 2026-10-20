@@ -21,7 +21,7 @@ def main(destination):
         '  TRACK 02 AUDIO',
         '    TITLE "Virtual Original Two"',
         '    PERFORMER "Virtual Artist Two"',
-        '    INDEX 01 00:30:00',
+        '    INDEX 01 00:00:30',
         '  TRACK 03 AUDIO',
         '    TITLE "Virtual Original Three"',
         '    PERFORMER "Virtual Artist Three"',
