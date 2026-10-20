@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidateSet('Win32','x64')][string]$Architecture,
-    [Parameter(Mandatory)][string]$ComponentDll
+    [Parameter(Mandatory)][string]$ComponentDll,
+    [switch]$RunLargeBenchmark
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -138,6 +139,30 @@ try {
         }
         Write-Host "REAL_HOST_$($case.name.ToUpperInvariant())_$Architecture=PASS"
     }
+    if ($RunLargeBenchmark) {
+        $caseDir = Join-Path $root 'benchmark-111'
+        $source = Join-Path $caseDir 'track-01.mp3'
+        $before = Join-Path $caseDir 'track-01.mp3.before'
+        & python tests/make_large_embedded_mp3.py $source
+        if ($LASTEXITCODE -ne 0) { throw '111-track fixture generation failed' }
+        Copy-Item -LiteralPath $source -Destination $before
+        $inventory = Invoke-IsolatedProbe '/metadata-isolation-probe-embedded-cue-inventory'
+        $inventoryText = Get-Content -LiteralPath $inventory -Raw
+        if ($inventoryText -notmatch '(?m)^inventory_subsong_count=111[ \t\r\n]*$') {
+            throw 'foobar did not expose all 111 virtual Cue tracks'
+        }
+        if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne
+            (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
+            throw '111-track inventory mutated source'
+        }
+        Remove-Item -LiteralPath $inventory -Force
+        Write-Host "EMBEDDED_CUE_111_INVENTORY_$Architecture=PASS"
+        $report = Invoke-IsolatedProbe '/metadata-isolation-probe-projection-benchmark'
+        & python tests/assert_large_virtual_benchmark.py $before $source $report
+        if ($LASTEXITCODE -ne 0) { throw '111-track independent postimage oracle failed' }
+        Write-Host "REAL_HOST_111_VIRTUAL_COMMIT_$Architecture=PASS"
+    }
+
 } finally {
     if ($null -ne $process) {
         try {
