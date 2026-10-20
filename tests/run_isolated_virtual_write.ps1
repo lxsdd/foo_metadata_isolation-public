@@ -5,7 +5,8 @@ param(
     [switch]$RunLargeBenchmark,
     [switch]$RunDirectGuard,
     [switch]$RunPhysicalMetadata,
-    [switch]$RunVirtualReplayGain
+    [switch]$RunVirtualReplayGain,
+    [switch]$RunCueTiming
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -192,6 +193,31 @@ try {
         & python tests/assert_isolated_replaygain_write.py $before $source $report
         if ($LASTEXITCODE -ne 0) { throw 'Independent Virtual ReplayGain oracle failed' }
         Write-Host "REAL_HOST_VIRTUAL_REPLAYGAIN_$Architecture=PASS"
+    }
+    if ($RunCueTiming) {
+        foreach ($test in @('index01-change','index01-invalid')) {
+            $caseDir = Join-Path $root ('cue-timing-' + $test)
+            $source = Join-Path $caseDir 'track-01.mp3'
+            $before = Join-Path $caseDir 'track-01.mp3.before'
+            & python tests/make_isolated_timing_mp3.py $source
+            if ($LASTEXITCODE -ne 0) { throw "Timing fixture creation failed: $test" }
+            Copy-Item -LiteralPath $source -Destination $before
+            $inventory = Invoke-IsolatedProbe '/metadata-isolation-probe-embedded-cue-inventory'
+            $text = Get-Content -LiteralPath $inventory -Raw
+            $lines = @($text.Split([char]10) | ForEach-Object { $_.Trim() })
+            if (-not ($lines -ccontains 'inventory_subsong_count=3')) {
+                throw "foobar did not expose 3 embedded Cue subsongs: $test"
+            }
+            if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne
+                (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
+                throw "Cue inventory changed source: $test"
+            }
+            Remove-Item -LiteralPath $inventory -Force
+            $report = Invoke-IsolatedProbe ('/metadata-isolation-probe-production-timing-' + $test)
+            & python tests/assert_isolated_timing_write.py $before $source $report --scenario $test
+            if ($LASTEXITCODE -ne 0) { throw "Timing postimage validation failed: $test" }
+            Write-Host ("REAL_HOST_CUE_TIMING_" + $Architecture + "=" + $test + ":PASS")
+        }
     }
     if ($RunPhysicalMetadata) {
         # Positive counterexample: physical tag writes must remain possible.
