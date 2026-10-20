@@ -16,6 +16,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Confirm candidate binaries remain private to the runner
+        shell: pwsh
+        run: python scripts/verify-public-artifact-hold.py
       - name: Detect source changes without skipping the required check
         id: changes
         shell: pwsh
