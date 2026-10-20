@@ -1779,10 +1779,19 @@ public:
                 // Never use on anything except a create-only disposable runner fixture.
                 // This deliberately exercises the native, unsafe host input writer
                 // without the isolated-shadow pathway; the Write Guard must veto it.
-                if (std::strstr(path, "mi-virtual-write-") == nullptr ||
-                    pfc::stricmp_ascii(pfc::string_extension(path), "mp3") != 0 ||
-                    !cfg_enabled) {
-                    throw pfc::exception("Direct Guard probe requires enabled protection and a disposable test MP3");
+                const bool disposable_fixture =
+                    std::strstr(path, "mi-virtual-write-") != nullptr;
+                const char* extension = pfc::string_extension(path);
+                const bool supported_mp3 = pfc::stricmp_ascii(extension, "mp3") == 0;
+                const bool guard_enabled = cfg_enabled;
+                report << "direct_guard_disposable_fixture="
+                       << (disposable_fixture ? "true" : "false") << "\n"
+                       << "direct_guard_mp3_extension="
+                       << (supported_mp3 ? "true" : "false") << "\n"
+                       << "direct_guard_cfg_enabled="
+                       << (guard_enabled ? "true" : "false") << "\n";
+                if (!disposable_fixture || !supported_mp3 || !guard_enabled) {
+                    throw pfc::exception("Direct Guard probe preconditions failed; refusing unsafe write");
                 }
                 input_info_reader::ptr inventory;
                 input_entry::g_open_for_info_read(inventory, nullptr, path, fb2k::noAbort);
