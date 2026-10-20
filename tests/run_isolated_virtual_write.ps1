@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)][string]$ComponentDll,
     [switch]$RunLargeBenchmark,
     [switch]$RunDirectGuard,
-    [switch]$RunPhysicalMetadata
+    [switch]$RunPhysicalMetadata,
+    [switch]$RunVirtualReplayGain
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -169,6 +170,29 @@ try {
         }
     }
 
+    if ($RunVirtualReplayGain) {
+        $caseDir = Join-Path $root 'virtual-replaygain'
+        $source = Join-Path $caseDir 'track-01.mp3'
+        $before = Join-Path $caseDir 'track-01.mp3.before'
+        & python tests/make_isolated_embedded_mp3.py $source
+        if ($LASTEXITCODE -ne 0) { throw 'ReplayGain fixture generation failed' }
+        Copy-Item -LiteralPath $source -Destination $before
+        $inventory = Invoke-IsolatedProbe '/metadata-isolation-probe-embedded-cue-inventory'
+        $inventoryText = Get-Content -LiteralPath $inventory -Raw
+        $inventoryLines = @($inventoryText.Split([char]10) | ForEach-Object { $_.Trim() })
+        if (-not ($inventoryLines -ccontains 'inventory_subsong_count=2')) {
+            throw 'ReplayGain fixture did not expose two virtual tracks'
+        }
+        if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne
+            (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
+            throw 'ReplayGain fixture mutated by read-only inventory'
+        }
+        Remove-Item -LiteralPath $inventory -Force
+        $report = Invoke-IsolatedProbe '/metadata-isolation-probe-production-shadow-replaygain'
+        & python tests/assert_isolated_replaygain_write.py $before $source $report
+        if ($LASTEXITCODE -ne 0) { throw 'Independent Virtual ReplayGain oracle failed' }
+        Write-Host "REAL_HOST_VIRTUAL_REPLAYGAIN_$Architecture=PASS"
+    }
     if ($RunPhysicalMetadata) {
         # Positive counterexample: physical tag writes must remain possible.
         $caseDir = Join-Path $root 'physical-title'
