@@ -34,8 +34,15 @@ public static class MetadataIsolationWindowLocator {
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr window, StringBuilder output, int maxCount);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
   [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr window, int controlId);
-  [DllImport("user32.dll", EntryPoint="SendMessageW")] public static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+  [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)]
+  private static extern IntPtr SendMessageTimeout(IntPtr window,uint message,IntPtr wParam,IntPtr lParam,uint flags,uint timeout,out IntPtr result);
   [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr window);
+  public static IntPtr SendMessage(IntPtr window,uint message,IntPtr wParam,IntPtr lParam) {
+    IntPtr result;
+    if (window==IntPtr.Zero || SendMessageTimeout(window,message,wParam,lParam,0x0002,2500,out result)==IntPtr.Zero)
+      throw new InvalidOperationException("Audited native control did not respond within 2.5s; message="+message.ToString("X"));
+    return result;
+  }
   public static string Status(IntPtr window) {
     IntPtr label=GetDlgItem(window,1201);
     if (label==IntPtr.Zero) throw new InvalidOperationException("Audit status control missing");
