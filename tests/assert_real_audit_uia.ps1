@@ -155,6 +155,17 @@ function Assert-CompletedAudit {
 Assert-CompletedAudit $window
 Write-Host ('AUDIT_DEFAULT_FILTER_INDEX='+[MetadataIsolationWindowLocator]::CurrentFilter($window))
 Write-Host ('AUDIT_DEFAULT_VISIBLE_ROWS='+[MetadataIsolationWindowLocator]::ItemCount($window))
+# Independent UIA view of the actual native SysListView32 (no Win32 messages).
+$ownedList=[MetadataIsolationWindowLocator]::GetDlgItem($window,1203)
+$uiList=[System.Windows.Automation.AutomationElement]::FromHandle($ownedList)
+if($null -eq $uiList){throw 'Native Audit ListView is not exposed through Windows UIA'}
+$uiRows=$uiList.FindAll(
+  [System.Windows.Automation.TreeScope]::Descendants,
+  [System.Windows.Automation.PropertyCondition]::new(
+    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+    [System.Windows.Automation.ControlType]::DataItem))
+Write-Host ('AUDIT_DEFAULT_UIA_DATAITEMS='+$uiRows.Count)
+
 Write-Host 'PRODUCTION_AUDIT_INCOMPLETE_CLASSIFIER=PASS'
 # Each change is applied to the actual production ComboBox and WM_COMMAND,
 # never by calling internal C++ application logic or mocking rows.
