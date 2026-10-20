@@ -291,6 +291,13 @@ tooltip_runtime_probe_result run_tooltip_runtime_probe(bool dark_mode) noexcept 
             tooltips.window(), TTM_GETCURRENTTOOLW, 0,
             reinterpret_cast<LPARAM>(&active)) != FALSE;
         result.hover_appeared = IsWindowVisible(tooltips.window()) != FALSE;
+        if (!result.hover_appeared) {
+            // Diagnostic only: an explicitly requested popup is NOT evidence
+            // that a user mouse-over tooltip appeared. Keep hover=false.
+            SendMessageW(tooltips.window(), TTM_POPUP, 0, 0);
+            result.forced_popup_visible = IsWindowVisible(tooltips.window()) != FALSE;
+            SendMessageW(tooltips.window(), TTM_POP, 0, 0);
+        }
         SetCursorPos(first_bounds.right + 40, first_bounds.bottom + 40);
         SendMessageW(first, WM_MOUSELEAVE, 0, 0);
         const ULONGLONG dismiss_deadline = GetTickCount64() + 1000;
