@@ -40,14 +40,20 @@ def main():
     cli.add_argument("before", type=Path)
     cli.add_argument("after", type=Path)
     cli.add_argument("report", type=Path)
+    cli.add_argument("--scenario", choices=("title","partial-style","strict","blocking","rollback"), default="title")
     args = cli.parse_args()
     report = args.report.read_text(encoding="utf-8-sig")
-    assert re.search(r"(?m)^write_result=committed\s*$", report), "probe did not commit"
-    assert re.search(r"(?m)^production_virtual_track_count=2\s*$", report), "wrong virtual count"
     physical_before, cue_before, audio_before = parse(args.before)
     physical_after, cue_after, audio_after = parse(args.after)
     assert physical_before == physical_after, "physical ID3 fields or opaque PRIV changed"
     assert audio_before == audio_after, "MPEG payload changed"
+    if args.scenario in ("strict", "blocking", "rollback"):
+        assert re.search(r"(?m)^write_result=not_committed\\s*$", report), "rejected writer reported a commit"
+        assert args.before.read_bytes() == args.after.read_bytes(), "rejected/rolled-back transaction changed source bytes"
+        print("VIRTUAL_"+args.scenario.upper()+"_REAL_FOOBAR_HOST=PASS; original byte-identical")
+        return
+    assert re.search(r"(?m)^write_result=committed\\s*$", report), "probe did not commit"
+    assert re.search(r"(?m)^production_virtual_track_count=2\\s*$", report), "wrong virtual count"
     assert cue_before != cue_after, "Cue was not updated"
     assert b'TITLE "Virtual Original One"' in cue_before
     assert b'TITLE "Virtual Original Two"' in cue_before
@@ -55,7 +61,10 @@ def main():
     assert (b'TITLE "Virtual Original One"' not in cue_after or
             b'TITLE "Virtual Original Two"' not in cue_after), "no virtual title change"
     assert b'REM UNIQUE_KEEP exactly-preserved' in cue_after
-    print("VIRTUAL_TITLE_REAL_FOOBAR_HOST=PASS; physical frames, opaque PRIV and audio exact")
+    if args.scenario == "partial-style":
+        assert "skip KNOWN_UNREPRESENTABLE" in report, "missing explicit STYLE skip evidence"
+        assert b"STYLE" not in cue_after and b"STYLE" not in cue_before, "STYLE was unexpectedly serialized"
+    print("VIRTUAL_"+args.scenario.upper()+"_REAL_FOOBAR_HOST=PASS; physical frames, opaque PRIV and audio exact")
 
 if __name__ == "__main__":
     main()
