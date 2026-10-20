@@ -160,13 +160,31 @@ if ([MetadataIsolationWindowLocator]::ItemCount($window) -ne 1) { throw 'Audit r
 $ownedList=[MetadataIsolationWindowLocator]::GetDlgItem($window,1203)
 $uiList=[System.Windows.Automation.AutomationElement]::FromHandle($ownedList)
 if($null -eq $uiList){throw 'Native Audit ListView is not exposed through Windows UIA'}
-$uiRows=$uiList.FindAll(
+$uiDataRows=$uiList.FindAll(
   [System.Windows.Automation.TreeScope]::Descendants,
   [System.Windows.Automation.PropertyCondition]::new(
     [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
     [System.Windows.Automation.ControlType]::DataItem))
-Write-Host ('AUDIT_DEFAULT_UIA_DATAITEMS='+$uiRows.Count)
-if ($uiRows.Count -ne 1) { throw 'Real Audit UIA result list must expose one problem DataItem' }
+$uiListRows=$uiList.FindAll(
+  [System.Windows.Automation.TreeScope]::Descendants,
+  [System.Windows.Automation.PropertyCondition]::new(
+    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+    [System.Windows.Automation.ControlType]::ListItem))
+Write-Host ('AUDIT_DEFAULT_UIA_DATAITEMS='+$uiDataRows.Count)
+Write-Host ('AUDIT_DEFAULT_UIA_LISTITEMS='+$uiListRows.Count)
+$uiRowCount=$uiDataRows.Count+$uiListRows.Count
+if($uiRowCount -ne 1){ throw 'Native Audit UIA must expose exactly one DataItem or ListItem' }
+$uiRow=if($uiDataRows.Count -eq 1){$uiDataRows.Item(0)}else{$uiListRows.Item(0)}
+$uiRowBounds=$uiRow.Current.BoundingRectangle
+if($uiRow.Current.IsOffscreen -or $uiRowBounds.Width -lt 2 -or $uiRowBounds.Height -lt 2){
+  throw 'Native Audit UIA result row is offscreen or has unusable bounds'
+}
+$uiRootBounds=$uiList.Current.BoundingRectangle
+$intersection=[System.Windows.Rect]::Intersect($uiRootBounds,$uiRowBounds)
+if($intersection.IsEmpty -or $intersection.Width -lt 2 -or $intersection.Height -lt 2){
+  throw 'Native Audit UIA result row is outside its parent ListView'
+}
+Write-Host 'PRODUCTION_AUDIT_UIA_RESULT_ROW=PASS'
 
 Write-Host 'PRODUCTION_AUDIT_INCOMPLETE_CLASSIFIER=PASS'
 # Each change is applied to the actual production ComboBox and WM_COMMAND,
