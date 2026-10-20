@@ -22,11 +22,13 @@ Latest independently tested source head before this documentation update: `efe2d
 
 The native Audit ListView had previously stored a stale child HWND after host UI initialization. Refresh now reacquires the current control handle before repopulating rows. The narrow fix and real-host result are documented in [draft PR #22](https://github.com/lxsdd/foo_metadata_isolation-public/pull/22) and the full interaction extension in [draft PR #23](https://github.com/lxsdd/foo_metadata_isolation-public/pull/23).
 
+Accessibility evidence: [real Win32/x64 MSAA hard-gate run 39502982702](https://github.com/lxsdd/foo_metadata_isolation-public/actions/runs/39502982702), tested SHA `82a63eed5a4fe824d8dd1297d949d9090f6511ed`. This is a stronger native accessibility assertion but does not fabricate UIA child exposure.
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.
 2. **Usability and real media:** actual large 111-track Mix on the user's computer; rapid intuitive operations, comprehensible accepted/skipped/blocked and pending states, no accidental physical tag changes, expected performance on real audio size.
-3. **Accessibility/UIA subitems:** the hosted Windows native UIA provider exposed no `DataItem` or `ListItem` child for an otherwise proven native ListView row. This is `PENDING_PROVIDER_UNEXPOSED`, **not** a UIA row PASS. Native row/filter/Rescan interaction **is** PASS.
+3. **Accessibility/UIA subitems:** MSAA now **PASS** in actual foobar2000 Win32/x64: from three native accessible children, exactly one is `ROLE_SYSTEM_LISTITEM` with a readable synthetic `Incomplete` status; no COM role/name errors. Hosted Windows UIA nevertheless exposes no `DataItem` or `ListItem` child for that same native row (`PENDING_PROVIDER_UNEXPOSED`). Do **not** claim direct UIA or screen-reader end-to-end acceptance; native rows/filters/Rescan **PASS**.
 4. **Broader real UI qualification:** complete Preferences, timing and audit controls, varying actual DPI and screen setups, screen readers where applicable, final end-user ergonomics and visual review.
 5. **Release governance:** consolidate/review stacked Draft source changes, verify licensing and source-cleanliness, test probe-free Win32/x64 delivery artifacts, confirm no private fixture/config/secrets or diagnostic DLLs are distributed, obtain explicit final release approval.
 
