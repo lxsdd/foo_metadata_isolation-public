@@ -48,12 +48,12 @@ def main():
     assert physical_before == physical_after, "physical ID3 fields or opaque PRIV changed"
     assert audio_before == audio_after, "MPEG payload changed"
     if args.scenario in ("strict", "blocking", "rollback"):
-        assert re.search(r"(?m)^write_result=not_committed\\s*$", report), "rejected writer reported a commit"
+        assert re.search(r"(?m)^write_result=not_committed\s*$", report), "rejected writer reported a commit"
         assert args.before.read_bytes() == args.after.read_bytes(), "rejected/rolled-back transaction changed source bytes"
         print("VIRTUAL_"+args.scenario.upper()+"_REAL_FOOBAR_HOST=PASS; original byte-identical")
         return
-    assert re.search(r"(?m)^write_result=committed\\s*$", report), "probe did not commit"
-    assert re.search(r"(?m)^production_virtual_track_count=2\\s*$", report), "wrong virtual count"
+    assert re.search(r"(?m)^write_result=committed\s*$", report), "probe did not commit"
+    assert re.search(r"(?m)^production_virtual_track_count=2\s*$", report), "wrong virtual count"
     assert cue_before != cue_after, "Cue was not updated"
     assert b'TITLE "Virtual Original One"' in cue_before
     assert b'TITLE "Virtual Original Two"' in cue_before
