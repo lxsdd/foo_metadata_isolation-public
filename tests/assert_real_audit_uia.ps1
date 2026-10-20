@@ -37,6 +37,7 @@ public static class MetadataIsolationWindowLocator {
   [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)]
   private static extern IntPtr SendMessageTimeout(IntPtr window,uint message,IntPtr wParam,IntPtr lParam,uint flags,uint timeout,out IntPtr result);
   [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr window);
+  [DllImport("user32.dll", EntryPoint="PostMessageW", SetLastError=true)] public static extern bool PostMessage(IntPtr window,uint message,IntPtr wParam,IntPtr lParam);
   public static IntPtr SendMessage(IntPtr window,uint message,IntPtr wParam,IntPtr lParam) {
     IntPtr result;
     if (window==IntPtr.Zero || SendMessageTimeout(window,message,wParam,lParam,0x0002,2500,out result)==IntPtr.Zero)
@@ -65,13 +66,15 @@ public static class MetadataIsolationWindowLocator {
     if (combo==IntPtr.Zero) throw new InvalidOperationException("Audit filter missing");
     long selected=SendMessage(combo,0x014E,new IntPtr(index),IntPtr.Zero).ToInt64();
     if (selected!=index) throw new InvalidOperationException("Audit filter selection rejected");
-    SendMessage(window,0x0111,new IntPtr((1 << 16) | 1202),combo);
+    if (!PostMessage(window,0x0111,new IntPtr((1 << 16) | 1202),combo))
+      throw new InvalidOperationException("Failed posting native Audit filter changed notification");
   }
   public static void Rescan(IntPtr window) {
     IntPtr button=GetDlgItem(window,1204);
     if (button==IntPtr.Zero || !IsWindowEnabled(button))
       throw new InvalidOperationException("Audit Rescan control unavailable");
-    SendMessage(button,0x00F5,IntPtr.Zero,IntPtr.Zero);
+    if (!PostMessage(button,0x00F5,IntPtr.Zero,IntPtr.Zero))
+      throw new InvalidOperationException("Failed posting native Audit Rescan button click");
   }
   public static IntPtr FindOwned(int processId, string title) {
     IntPtr found=IntPtr.Zero;
@@ -156,27 +159,38 @@ Write-Host 'PRODUCTION_AUDIT_INCOMPLETE_CLASSIFIER=PASS'
 # Each change is applied to the actual production ComboBox and WM_COMMAND,
 # never by calling internal C++ application logic or mocking rows.
 foreach($entry in @(
-  @{Name='Problems';Index=0;Expected=1},
   @{Name='All';Index=1;Expected=1},
-  @{Name='Empty';Index=2;Expected=0},
+  @{Name='OK';Index=6;Expected=0},
   @{Name='Incomplete';Index=3;Expected=1},
+  @{Name='Empty';Index=2;Expected=0},
+  @{Name='Problems';Index=0;Expected=1},
   @{Name='Mismatch';Index=4;Expected=0},
-  @{Name='Review';Index=5;Expected=0},
-  @{Name='OK';Index=6;Expected=0}
+  @{Name='Review';Index=5;Expected=0}
 )){
   [MetadataIsolationWindowLocator]::SelectFilter($window,[int]$entry.Index)
-  $seen=[MetadataIsolationWindowLocator]::ItemCount($window)
+  $seen=-1
+  for($retry=0;$retry -lt 50;$retry++){
+    $seen=[MetadataIsolationWindowLocator]::ItemCount($window)
+    if($seen -eq [int]$entry.Expected){break}
+    Start-Sleep -Milliseconds 100
+  }
   if($seen -ne [int]$entry.Expected){
     throw ('Actual native audit '+$entry.Name+' filter count incorrect; expected '+$entry.Expected+' observed '+$seen)
   }
+  Write-Host ('AUDIT_NATIVE_FILTER_'+$entry.Name.ToUpperInvariant()+'=PASS')
 }
 Write-Host 'PRODUCTION_AUDIT_NATIVE_FILTER_MATRIX=PASS'
 [MetadataIsolationWindowLocator]::SelectFilter($window,0)
 # BM_CLICK is a real native button event, not a direct test callback.
 [MetadataIsolationWindowLocator]::Rescan($window)
-$pending=[MetadataIsolationWindowLocator]::Status($window)
-if(-not ($pending.StartsWith('Scanning physical metadata') -or
-          $pending.StartsWith('Finding embedded-Cue physical sources'))) {
+$scanObserved=$false
+for($i=0;$i -lt 40;$i++){
+  $pending=[MetadataIsolationWindowLocator]::Status($window)
+  if($pending.StartsWith('Scanning physical metadata') -or
+     $pending.StartsWith('Finding embedded-Cue physical sources')){ $scanObserved=$true;break }
+  Start-Sleep -Milliseconds 50
+}
+if(-not $scanObserved){
   throw 'Native Rescan did not trigger an observable read-only scan'
 }
 Assert-CompletedAudit $window
