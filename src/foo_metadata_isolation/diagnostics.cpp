@@ -1779,8 +1779,25 @@ public:
                 // Never use on anything except a create-only disposable runner fixture.
                 // This deliberately exercises the native, unsafe host input writer
                 // without the isolated-shadow pathway; the Write Guard must veto it.
-                const bool disposable_fixture =
-                    std::strstr(path, "mi-virtual-write-") != nullptr;
+                // Independent create-only test marker lives beside the exact source.
+                // A path-name heuristic is not sufficient because foobar may
+                // canonicalize or URL-encode paths before creating a handle.
+                static constexpr char fixture_marker[] = "MI-DISPOSABLE-FOOBAR-GUARD-V1";
+                pfc::string_formatter marker_path;
+                marker_path << path << ".metadata-isolation-guard-fixture.txt";
+                bool disposable_fixture = false;
+                try {
+                    file::ptr marker;
+                    filesystem::g_open_read(marker, marker_path, fb2k::noAbort);
+                    if (marker->get_size_ex(fb2k::noAbort) == sizeof(fixture_marker) - 1) {
+                        char readback[sizeof(fixture_marker)] = {};
+                        marker->read_object(readback, sizeof(fixture_marker) - 1, fb2k::noAbort);
+                        disposable_fixture =
+                            std::memcmp(readback, fixture_marker, sizeof(fixture_marker) - 1) == 0;
+                    }
+                } catch (const std::exception&) {
+                    disposable_fixture = false;
+                }
                 const char* extension = pfc::string_extension(path);
                 const bool supported_mp3 = pfc::stricmp_ascii(extension, "mp3") == 0;
                 const bool guard_enabled = cfg_enabled;
