@@ -28,7 +28,9 @@ jobs:
       - name: Package and verify exact candidate
         shell: pwsh
         run: ./ci/package.ps1 -BuildRoot . -ComponentId foo_metadata_isolation
-      - uses: actions/upload-artifact@v7
+      - name: Upload candidate (distribution currently on hold)
+        if: false # Candidate stays on ephemeral CI runner
+        uses: actions/upload-artifact@v7
         with:
           name: foo_metadata_isolation-candidate-${{ github.sha }}
           path: candidate/*
