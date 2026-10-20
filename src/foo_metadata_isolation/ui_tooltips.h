@@ -43,6 +43,11 @@ struct tooltip_runtime_probe_result {
     size_t registered_count = 0;
     bool texts_match = false;
     bool distinct_mapping = false;
+    bool parent_visible = false;
+    bool parent_foreground = false;
+    bool cursor_inside = false;
+    bool mouse_event_sent = false;
+    bool current_tool_present = false;
     bool hover_appeared = false;
     bool hover_dismissed = false;
     bool unicode_roundtrip = false;
