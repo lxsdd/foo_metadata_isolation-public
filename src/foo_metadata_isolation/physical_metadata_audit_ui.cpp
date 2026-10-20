@@ -86,6 +86,15 @@ cfg_string g_cfg_audit_column_state(guids::cfg_audit_column_state, "");
 
 HWND g_audit_window = nullptr;
 
+#if defined(FB2K_ENABLE_TEST_PROBES)
+// Only synthetic CI snapshots. Never record paths, metadata or user values.
+std::atomic_size_t g_audit_probe_model_rows{0};
+std::atomic_size_t g_audit_probe_filtered_rows{0};
+std::atomic_int g_audit_probe_native_rows{-1};
+std::atomic_int g_audit_probe_filter{-1};
+std::atomic_bool g_audit_probe_list_visible{false};
+#endif
+
 enum class audit_scope {
     library,
     selection,
@@ -937,6 +946,13 @@ public:
         InvalidateRect(m_list, nullptr, TRUE);
         update_sort_indicator();
         update_edit_enabled();
+#if defined(FB2K_ENABLE_TEST_PROBES)
+        g_audit_probe_model_rows.store(m_rows.size());
+        g_audit_probe_filtered_rows.store(visible.size());
+        g_audit_probe_native_rows.store(ListView_GetItemCount(m_list));
+        g_audit_probe_filter.store(filter);
+        g_audit_probe_list_visible.store(IsWindowVisible(m_list) != FALSE);
+#endif
     }
 
     void update_sort_indicator() {
@@ -1340,6 +1356,17 @@ mainmenu_group_popup_factory g_audit_mainmenu_group(
 mainmenu_commands_factory_t<audit_mainmenu_commands> g_audit_mainmenu_commands;
 
 } // namespace
+
+#if defined(FB2K_ENABLE_TEST_PROBES)
+void read_audit_internal_state_for_test(pfc::string_base& output) {
+    output << "audit_model_rows=" << g_audit_probe_model_rows.load() << "\n"
+           << "audit_filtered_rows=" << g_audit_probe_filtered_rows.load() << "\n"
+           << "audit_native_rows=" << g_audit_probe_native_rows.load() << "\n"
+           << "audit_filter_index=" << g_audit_probe_filter.load() << "\n"
+           << "audit_list_visible="
+           << (g_audit_probe_list_visible.load() ? "true" : "false") << "\n";
+}
+#endif
 
 void show_physical_metadata_audit_library() {
     metadb_handle_list empty;
