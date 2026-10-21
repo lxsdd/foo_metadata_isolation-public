@@ -119,22 +119,6 @@ public static class OriginalMasstaggerUiDiscovery {
 $launcher=$null
 $dialog=[IntPtr]::Zero
 try{
-    # Genuine first-run foobar2000 2.26.1 launches its Quick Appearance
-    # Setup as a modal window on a NEW disposable profile. It can prevent
-    # the documented context command reaching Masstagger. Dismiss ONLY the
-    # uniquely titled, real modal in the already PID/path-verified host.
-    $intro=[OriginalMasstaggerUiDiscovery]::FindExactTitle($FoobarPid,'Quick Appearance Setup')
-    if($intro -ne [IntPtr]::Zero){
-        [OriginalMasstaggerUiDiscovery]::Close($intro,$FoobarPid)
-        for($attempt=0;$attempt -lt 30;$attempt++){
-            Start-Sleep -Milliseconds 150
-            if([OriginalMasstaggerUiDiscovery]::FindExactTitle($FoobarPid,'Quick Appearance Setup') -eq [IntPtr]::Zero){break}
-        }
-        if([OriginalMasstaggerUiDiscovery]::FindExactTitle($FoobarPid,'Quick Appearance Setup') -ne [IntPtr]::Zero){
-            throw 'Disposable initial foobar Quick Appearance modal cannot be safely dismissed'
-        }
-        Write-Host 'MASSTAGGER_DISPOSABLE_HOST_FIRST_RUN_MODAL_DISMISSED=PASS'
-    }
     # First verify that genuine external foobar CLI dispatch reaches the
     # existing read-only in-component inventory probe on this synthetic CUE.
     $report=$source+'.metadata-isolation-probe.txt'
@@ -186,6 +170,22 @@ try{
     }
     Write-Host 'MASSTAGGER_ORIGINAL_PHYSICAL_SDK_CONTEXT_DISCOVERY=PASS'
 
+    # Genuine first-run foobar2000 2.26.1 launches its Quick Appearance
+    # Setup as a modal window on a NEW disposable profile. It can prevent
+    # the documented context command reaching Masstagger. Dismiss ONLY the
+    # uniquely titled, real modal in the already PID/path-verified host.
+    $intro=[OriginalMasstaggerUiDiscovery]::FindExactTitle($FoobarPid,'Quick Appearance Setup')
+    if($intro -ne [IntPtr]::Zero){
+        [OriginalMasstaggerUiDiscovery]::Close($intro,$FoobarPid)
+        for($attempt=0;$attempt -lt 30;$attempt++){
+            Start-Sleep -Milliseconds 150
+            if([OriginalMasstaggerUiDiscovery]::FindExactTitle($FoobarPid,'Quick Appearance Setup') -eq [IntPtr]::Zero){break}
+        }
+        if([OriginalMasstaggerUiDiscovery]::FindExactTitle($FoobarPid,'Quick Appearance Setup') -ne [IntPtr]::Zero){
+            throw 'Disposable initial foobar Quick Appearance modal cannot be safely dismissed'
+        }
+        Write-Host 'MASSTAGGER_DISPOSABLE_HOST_FIRST_RUN_MODAL_DISMISSED=PASS'
+    }
     # Reuse the EXISTING Metadata Isolation physical-context routing test:
     # map Cue subsongs to metadb_handle(path,0), load physical metadata,
     # locate the ORIGINAL third-party 'Manage scripts' command by its exact
