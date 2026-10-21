@@ -60,13 +60,21 @@ public static class MetadataIsolationTimingWindowLocator {
     GetWindowTextW(hwnd,builder,builder.Capacity);
     return builder.ToString();
   }
-  [DllImport("user32.dll",CharSet=CharSet.Unicode)]
-  static extern bool SetWindowTextW(IntPtr hwnd,string value);
+  // SetWindowTextW cannot modify an EDIT control owned by another process.
+  // WM_SETTEXT is a system-defined message: Windows marshals its UTF-16 text
+  // across the process boundary without remote memory or injected code.
+  [DllImport("user32.dll",EntryPoint="SendMessageTimeoutW",CharSet=CharSet.Unicode,SetLastError=true)]
+  static extern IntPtr SendMessageTimeoutSetText(IntPtr hwnd,uint message,IntPtr wparam,
+    [MarshalAs(UnmanagedType.LPWStr)] string value,uint flags,uint timeout,out IntPtr result);
   [DllImport("user32.dll",EntryPoint="PostMessageW",SetLastError=true)]
   static extern bool PostMessageW(IntPtr hwnd,uint msg,IntPtr wparam,IntPtr lparam);
   public static void SetText(IntPtr hwnd,string value){
-    if(hwnd==IntPtr.Zero || !SetWindowTextW(hwnd,value))
-      throw new InvalidOperationException("Timing UI EDIT rejected new value");
+    if(hwnd==IntPtr.Zero)
+      throw new InvalidOperationException("Timing UI EDIT control missing");
+    IntPtr result;
+    if(SendMessageTimeoutSetText(hwnd,0x000C,IntPtr.Zero,value,2,3000,out result)==IntPtr.Zero ||
+       result==IntPtr.Zero)
+      throw new InvalidOperationException("Timing UI EDIT rejected cross-process WM_SETTEXT");
   }
   public static void ClickAsync(IntPtr hwnd){
     if(hwnd==IntPtr.Zero || !PostMessageW(hwnd,0x00F5,IntPtr.Zero,IntPtr.Zero))
