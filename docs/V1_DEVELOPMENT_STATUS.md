@@ -99,6 +99,10 @@ MSAA and native Win32 confirm the visible **Discard** default on the real timing
 
 New source-only compatibility workflow `sdk-2026-full-e2e.yml` **reuses the exact qualified SDK staging script from independent Draft #27** and exact Git source `31a35947a7527826c2199491692802e3ce3d8bd7` / SDK subtree `2ba8caeb73f72633ad7f60ee5f72ed8074a0eb17`. It verifies original repository provenance **before** touching SDK files, swaps vendored headers/projects only inside disposable GitHub Windows workspaces, compiles the latest integrated Metadata Isolation source including native keyboard safety against SDK 2026-10-01 and runs full actual foobar2000 2.26.1 Win32/x64 physical/virtual/CUE/ReplayGain, 111-track synthetic, Audit, accessibility and Enter-to-Discard E2E. Only existing original SHA-verified foobar installers are consumed. The tracked old SDK in Git is **not changed**; this is a compatibility experiment, **not an SDK migration, merge or release**. Require exact-head real host evidence.
 
+### SDK 2026-10-01 adopted as immutable Git-pinned primary build dependency
+
+The current tracked older SDK source and three vendor .lib files are removed; SDK headers/projects/binary libs are now hydrated before **all** standard Win32/x64 builds from the centrally reviewed Git source commit `31a35947a7527826c2199491692802e3ce3d8bd7` and exact source tree `2ba8caeb73f72633ad7f60ee5f72ed8074a0eb17`. Existing vendor license notices remain tracked. CI does not download the repeatedly blocked official SDK archive or upload any component binaries. The official archive SHA in the pin is metadata and is **not** claimed to have been directly remeasured. On this migration Draft an exact-HEAD Windows rebuild/native E2E is mandatory; compatibility demonstrated on previous Drafts alone is insufficient.
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.

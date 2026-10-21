@@ -45,6 +45,13 @@ jobs:
             dll: build/x64/foo_metadata_isolation.dll
     steps:
       - uses: actions/checkout@v7
+      - name: Checkout reviewed foobar SDK 2026-10-01 source
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/foobar2000_component_template
+          ref: 31a35947a7527826c2199491692802e3ce3d8bd7
+          path: external/sdk-template
+          persist-credentials: false
       - name: Checkout reviewed shared UIA adapter (source only)
         uses: actions/checkout@v7
         with:
@@ -64,6 +71,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          ./ci/test-latest-sdk.ps1
           ./validate_project.ps1
           & msbuild component.sln /t:Build /p:Configuration=Release /p:Platform=${{ matrix.architecture }} /p:EnableTestProbes=true /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
           if ($LASTEXITCODE -ne 0) { throw 'Probe-enabled DLL build failed' }

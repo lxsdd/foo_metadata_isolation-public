@@ -22,11 +22,19 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Checkout reviewed foobar SDK 2026-10-01 source
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/foobar2000_component_template
+          ref: 31a35947a7527826c2199491692802e3ce3d8bd7
+          path: external/sdk-template
+          persist-credentials: false
       - uses: microsoft/setup-msbuild@v2
       - name: Validate repository and build both architectures
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
+          ./ci/test-latest-sdk.ps1
           ./validate_project.ps1
           foreach($platform in @('Win32','x64')) {
             & msbuild 'component.sln' /t:Build /p:Configuration=Release /p:Platform=$platform /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
