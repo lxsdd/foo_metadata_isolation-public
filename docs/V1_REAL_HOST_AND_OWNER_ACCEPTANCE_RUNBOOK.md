@@ -49,6 +49,10 @@ The owner cannot upload the real 111-track recording because of file size and co
 - Show that no physical `TITLE/ARTIST/TRACKNUMBER`, user-defined tag, ReplayGain or unrelated cue token was silently lost. Confirm duplicate/subsong distinctions and physical vs virtual scope remain understandable.
 - Keep source untouched and preserve a tested rollback path. Obtain explicit user ergonomic/performance verdict instead of inferring acceptance from CI.
 
+### Independent native audit keyboard/MSAA bridge qualification (synthetic CI)
+
+A real Win32/x64 accessibility regression now verifies the original audit ListView can obtain **keyboard focus using native Windows dialog focus routing**, consume an actual HOME keypress from the isolated GitHub Windows desktop, select the single synthetic INCOMPLETE row, and expose that selected/focused row through the **original Win32/MSAA accessibility object**. The test checks exact native parent/child process ownership and foreground focus, uses only runner-generated MP3 and does not call tag-writing actions; a failure cannot be promoted to PASS. This narrows the gap between mouse-only Audit and keyboard usability but is **not** a claim that the hosted UIA provider exposes descendants, that a genuine screen reader was exercised, or that owner display configurations were covered. Qualified only after exact-HEAD Win32/x64 E2E completes.
+
 ## Gate 4 — UI, accessibility and ordinary DJ workflow
 
 - Review at different available Windows DPI scaling, display positions/multimonitor configurations, light/dark/high-contrast themes, and maximize/minimize/modeless behavior where applicable.

@@ -17,6 +17,7 @@ on:
       - 'tests/assert_isolated_timing_write.py'
       - 'tests/assert_isolated_ux_contracts.py'
       - 'tests/assert_real_audit_uia.ps1'
+      - 'tests/assert_real_audit_keyboard_msaa.ps1'
       - 'tests/assert_real_virtual_timing_uia.ps1'
       - 'tests/assert_timing_review_native_msaa.ps1'
       - 'tests/assert_real_timing_enter_safe.ps1'

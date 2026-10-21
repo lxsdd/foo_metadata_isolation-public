@@ -258,6 +258,11 @@ if($msaa[0] -ne 0 -or $msaaDetails[0] -ne 0 -or
   throw 'Native Audit MSAA accessibility does not expose exactly one readable synthetic INCOMPLETE result row'
 }
 Write-Host 'PRODUCTION_AUDIT_MSAA_SINGLE_ROW=PASS'
+# Independently prove that a real keyboard can focus/select the native audit
+# row and that its actual MSAA accessible state reflects the selection.
+# This is evidence for keyboard+MSAA, not full UIA/screen-reader acceptance.
+& ./tests/assert_real_audit_keyboard_msaa.ps1 -FoobarPid $FoobarPid -AuditHwnd $window -ListHwnd $ownedList
+
 $uiRowCount=$uiDataRows.Count+$uiListRows.Count
 if($uiRowCount -gt 0){
   if($uiRowCount -ne 1){ throw 'Native Audit UIA has inconsistent result child count' }
