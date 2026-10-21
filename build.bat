@@ -34,6 +34,15 @@ if not exist "!BUILD_DIR!" mkdir "!BUILD_DIR!" >nul 2>nul
 if exist "!BUILD_OK_MARKER!" del /f /q "!BUILD_OK_MARKER!" >nul 2>nul
 
 echo Using MSBuild: !MSBUILD!
+echo Verifying central foobar2000 SDK 2026-10-01 pin and staging SDK source...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0ci\test-latest-sdk.ps1" -AllowLocal
+if errorlevel 1 (
+    echo [ERROR] Reviewed SDK 2026-10-01 was not staged. Refusing the older SDK.
+    exit /b 1
+)
+
+rem The SDK 2026-10-01 helper project uses WTL headers independent of component.props.
+set CL=/I"%~dp0wtl\Include" %CL%
 echo Building foo_metadata_isolation Win32 Release...
 "!MSBUILD!" component.sln /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v145 /p:CppLanguageStandard=cpp23 !TEST_PROBE_PROPERTY! /t:!BUILD_TARGET!
 if errorlevel 1 exit /b 1
