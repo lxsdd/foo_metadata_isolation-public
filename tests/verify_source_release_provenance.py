@@ -1,6 +1,9 @@
 """Fail-closed source-only provenance of centrally pinned SDK 2026-10-01."""
 from pathlib import Path
-import subprocess, json, re
+import subprocess, json, re, hashlib
+# Exact reviewed LICENSE Git-blob identity, adapted verbatim from Bridge
+# except the project name and local third-party notice link.
+OWNER_LICENSE_BLOB = '1e6be2f59950704368c7d58e4ddecb2fc7dd59c2'
 ROOT=Path(__file__).resolve().parents[1]
 NOTICES={'sdk/sdk-license.txt','sdk/pfc/pfc-license.txt','sdk/libPPUI/libPPUI-license.txt','wtl/MS-PL.txt','THIRD_PARTY_NOTICES.md'}
 ALLOWED_SDK={'sdk/README.md','sdk/SDK-PIN.json','sdk/sdk-license.txt','sdk/pfc/pfc-license.txt','sdk/libPPUI/libPPUI-license.txt'}
@@ -56,6 +59,13 @@ def main():
     found += ['project-owned license file missing'] if 'LICENSE' not in paths else []
     project_license=(ROOT/'LICENSE').read_text(encoding='utf-8') if 'LICENSE' in paths else ''
     found += license_issues(project_license)
+    # Normalize Windows checkout newlines before hashing the Git blob:
+    # licensing must be byte-for-byte equivalent to the reviewed owner grant,
+    # including the complete MIT terms, Commons Clause and correct scope.
+    license_bytes=project_license.replace('\r\n','\n').encode('utf-8')
+    license_blob=hashlib.sha1(b'blob '+str(len(license_bytes)).encode('ascii')+b'\0'+license_bytes).hexdigest()
+    if license_blob != OWNER_LICENSE_BLOB:
+        found.append('project-owned LICENSE differs from exact reviewed Bridge-based grant')
     if found:raise SystemExit('SOURCE_PROVENANCE_FAIL:\n- '+'\n- '.join(found))
     assert issues(paths|{'test-media/private.mp3'},pin,notices)
     assert issues(paths|{'sdk/foobar2000/shared/shared-x64.lib'},pin,notices)
@@ -71,6 +81,10 @@ def main():
     assert license_issues(project_license.replace('Software: foo_metadata_isolation','Software: another'))
     assert license_issues(project_license.replace('"Commons Clause" License Condition v1.0','',1))
     assert not license_issues(project_license)
+    mutated=project_license.replace('Copyright (c) 2026 lxsdd','Copyright (c) 2026 OTHER')
+    mutated_bytes=mutated.encode('utf-8')
+    assert hashlib.sha1(b'blob '+str(len(mutated_bytes)).encode('ascii')+b'\0'+mutated_bytes).hexdigest()!=OWNER_LICENSE_BLOB
+    print('OWN_SOURCE_LICENSE_EXACT_REVIEWED_GIT_BLOB=PASS')
     print('OWN_SOURCE_LICENSE=MIT_PLUS_COMMONS_CLAUSE_V1_OWNER_APPROVED')
     print('OWN_SOURCE_LICENSE_SCOPE_AND_MUTATIONS=PASS')
     print('OWN_SOURCE_LICENSE_IS_OSI_OPEN_SOURCE=NO_SOURCE_AVAILABLE')
