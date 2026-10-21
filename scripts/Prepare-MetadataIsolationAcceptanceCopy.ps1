@@ -29,7 +29,11 @@ if(-not $rootItem.PSIsContainer){throw 'DestinationRoot must be an existing dire
 # All source and destination directory links/reparse points are rejected:
 # a caller-provided path must not escape the intended location unexpectedly.
 foreach($target in @($sourceItem,$rootItem)){
-  $cur=$target
+  if(($target.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){
+    throw 'Reparse-point/symlink source or destination is not supported'
+  }
+  # FileInfo has Directory, not Parent; DirectoryInfo has Parent.
+  $cur=if($target -is [IO.FileInfo]){$target.Directory}else{$target}
   while($null -ne $cur){
     if(($cur.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){
       throw 'Reparse-point/symlink source or destination hierarchy is not supported'
