@@ -2077,12 +2077,12 @@ public:
 
         fb2k::inMainThread([path] {
             pfc::string_formatter report;
-            report << "native_original_masstagger_bootstrap=true\\n";
+            report << "native_original_masstagger_bootstrap=true\n";
             try {
                 input_info_reader::ptr reader;
                 input_entry::g_open_for_info_read(reader, nullptr, path.c_str(), fb2k::noAbort);
                 if (reader->get_subsong_count() != 2) {
-                    report << "write_result=invalid_synthetic_subsong_count\\n";
+                    report << "write_result=invalid_synthetic_subsong_count\n";
                 } else {
                     reader.release();
                     metadb_handle_list physical;
@@ -2094,17 +2094,17 @@ public:
                     contextmenu_node* original = find_context_command(
                         context->get_root(), "Manage scripts");
                     if (original == nullptr) {
-                        report << "write_result=original_masstagger_command_not_found\\n";
+                        report << "write_result=original_masstagger_command_not_found\n";
                     } else {
-                        report << "native_original_context_executed=Manage scripts\\n";
+                        report << "native_original_context_executed=Manage scripts\n";
                         original->execute();
-                        report << "write_result=original_ui_returned\\n";
+                        report << "write_result=original_ui_returned\n";
                     }
                 }
             } catch (const std::exception&) {
                 // Never log arbitrary source paths, tag contents or exception
                 // details even though the only admitted test data is synthetic.
-                report << "write_result=original_native_bootstrap_exception\\n";
+                report << "write_result=original_native_bootstrap_exception\n";
             }
             try { write_report(path.c_str(), report); }
             catch (const std::exception&) {
