@@ -54,4 +54,14 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "SDK_2026_10_01_NATIVE_$platform=FAIL" }
             Write-Host "SDK_2026_10_01_NATIVE_$platform=PASS"
           }
-          Write-Host 'HOST_BOOT_AND_CUE_WRITER_E2E=NOT_TESTED (requires separate real foobar host run)'
+          Write-Host 'CUE_WRITER_E2E=NOT_TESTED (requires separate synthetic CUE/physical preservation fixture)'
+      - name: HARD GATE - real foobar2000 Win32 loads current-SDK Metadata Isolation DLL
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec
+        with:
+          architecture: Win32
+          component-dll: build/foo_metadata_isolation.dll
+      - name: HARD GATE - real foobar2000 x64 loads current-SDK Metadata Isolation DLL
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec
+        with:
+          architecture: x64
+          component-dll: build/x64/foo_metadata_isolation.dll
