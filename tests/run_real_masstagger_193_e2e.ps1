@@ -203,7 +203,7 @@ try {
     # runs. Treat ONLY this precise read-only dispatch blocker as pending.
     # Every other failure, unexpected media write or host crash still FAILS.
     try {
-        & ./tests/inspect_real_masstagger_manage_scripts.ps1 -FoobarPid $process.Id -Executable $exe -Workdir $portable -FixturePath $cueSource
+        & ./tests/inspect_real_masstagger_manage_scripts.ps1 -FoobarPid $process.Id -Executable $exe -Workdir $portable -FixturePath $cueSource -ExpectDirectVirtualGuard:(-not $cueChanged)
         Write-Host 'MASSTAGGER_EMBEDDED_CUE_REAL_MANAGE_SCRIPTS_UI=PASS_READ_ONLY'
     }catch{
         if($_.Exception.Message -notmatch 'BLOCKED_PRE_ROUTING: external foobar CLI did not run synthetic Cue inventory'){
