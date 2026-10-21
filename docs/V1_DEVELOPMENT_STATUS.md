@@ -59,6 +59,10 @@ The positive UI Commit oracle now checks the **exact raw Cue postimage** (only `
 
 The checked GitHub HEAD dependencies, the intentionally diverged and unmerged Drafts #7/#8, and the no-merge/no-release plan are recorded in [DRAFT_PR_DEPENDENCY_AUDIT.md](DRAFT_PR_DEPENDENCY_AUDIT.md). Current CI source checks are not authorization to consolidate into `main`.
 
+### Candidate SHA provenance on Pull Requests
+
+For PR CI, `GITHUB_SHA` is the **checked-out synthetic test-merge commit**, not automatically the Draft branch HEAD. The runner-only packaging step now requires full Git ancestry, verifies that the test-merge parents are exactly the event's base and PR-head SHAs, and records both `built_checkout_sha` and `source_head_sha` in the manifest. Manual direct-branch runs record their checked-out commit as both. This eliminates misleading single-SHA labels without authorizing a release, artifact upload, or replacing real host validation.
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.

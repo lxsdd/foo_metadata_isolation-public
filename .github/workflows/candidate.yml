@@ -20,6 +20,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: microsoft/setup-msbuild@v2
       - name: Validate repository and build both architectures
         shell: pwsh
@@ -46,12 +48,22 @@ jobs:
       # foobar2000 download host. Never upload from Draft or manual CI.
       - name: Package and verify exact candidate (runner-only)
         shell: pwsh
+        env:
+          EXPECTED_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           ./ci/package.ps1 -BuildRoot . -ComponentId foo_metadata_isolation
           $manifest=Get-Content -LiteralPath candidate/manifest.json -Raw | ConvertFrom-Json
           if($manifest.release_authorized -ne $false -or $manifest.runtime_acceptance -cne 'PENDING') {
             throw 'Candidate manifest illegally authorizes a release or runtime acceptance'
           }
+          $expectedHead=if($env:GITHUB_EVENT_NAME -eq 'pull_request'){$env:EXPECTED_PR_HEAD_SHA}else{$env:GITHUB_SHA}
+          if($manifest.source_head_sha -cne $expectedHead -or
+             $manifest.built_checkout_sha -cne $env:GITHUB_SHA -or
+             $manifest.commit -cne $env:GITHUB_SHA) {
+            throw 'Candidate manifest GitHub PR-head and checkout provenance mismatch'
+          }
+          Write-Host ('RUNNER_ONLY_CANDIDATE_PROVENANCE=PASS; ref kind=' + $manifest.checkout_kind)
           Write-Host 'RUNNER_ONLY_CANDIDATE_FORMAT=PASS; runtime acceptance remains PENDING'
       - name: Gate - component ZIP layout mutation regression
         shell: pwsh
