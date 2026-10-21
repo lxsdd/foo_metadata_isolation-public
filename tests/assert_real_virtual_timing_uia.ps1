@@ -265,3 +265,65 @@ if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $before){
 }
 Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DISCARD_BYTE_EXACT=PASS'
 
+# Positive production UI path: commit only to the same exact synthetic file.
+# The previous Cancel and Discard subtests must both have proved byte identity.
+# Do not use a diagnostic commit to manufacture acceptance for the native UI.
+if($before -ine 'd0a39dff211bebb856749ee209e55a16f23692ae39b2f9181ebae18997731219'){
+  throw 'Live UI Commit refuses unknown or modified synthetic timing source'
+}
+$commitBefore=$source+'.before-real-ui-commit'
+if(Test-Path -LiteralPath $commitBefore){throw 'Live UI Commit refuses stale oracle preimage'}
+Copy-Item -LiteralPath $source -Destination $commitBefore -ErrorAction Stop
+$launched=Start-Process -FilePath $Executable -WorkingDirectory $Workdir -ArgumentList @(
+  '/metadata-isolation-probe-open-real-virtual-timing',('"' + $source + '"')) -PassThru
+$window=[IntPtr]::Zero
+for($retry=0;$retry -lt 100;$retry++){
+  $window=[MetadataIsolationTimingWindowLocator]::Find($FoobarPid,'Metadata Isolation - Virtual timing')
+  if($window -ne [IntPtr]::Zero){break}
+  Start-Sleep -Milliseconds 200
+}
+if($window -eq [IntPtr]::Zero){throw 'Actual Virtual timing dialog did not open for positive UI Commit'}
+$editHwnd=[MetadataIsolationTimingWindowLocator]::GetDlgItem($window,1104)
+if([MetadataIsolationTimingWindowLocator]::TextByNativeMessage($editHwnd) -cne '00:00:30'){
+  throw 'Positive UI Commit preimage does not match the original INDEX 01'
+}
+[MetadataIsolationTimingWindowLocator]::SetText($editHwnd,'00:00:35')
+if([MetadataIsolationTimingWindowLocator]::TextByNativeMessage($editHwnd) -cne '00:00:35'){
+  throw 'Positive UI Commit editor did not accept requested CD frames'
+}
+[MetadataIsolationTimingWindowLocator]::ClickAsync(
+  [MetadataIsolationTimingWindowLocator]::GetDlgItem($window,1))
+$review=[IntPtr]::Zero
+for($retry=0;$retry -lt 160;$retry++){
+  $review=[MetadataIsolationTimingWindowLocator]::Find($FoobarPid,'Metadata Isolation')
+  if($review -ne [IntPtr]::Zero){break}
+  Start-Sleep -Milliseconds 150
+}
+if($review -eq [IntPtr]::Zero){throw 'Positive UI Commit did not reach the real native review'}
+$commitButton=[MetadataIsolationTimingWindowLocator]::FindDescendantButton($review,'Commit')
+$discardButton=[MetadataIsolationTimingWindowLocator]::FindDescendantButton($review,'Discard')
+if($commitButton -eq [IntPtr]::Zero -or $discardButton -eq [IntPtr]::Zero){
+  throw 'Positive UI Commit refuses review without unique native Commit/Discard buttons'
+}
+if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $before){
+  throw 'Original media changed before native Commit action'
+}
+[MetadataIsolationTimingWindowLocator]::ClickAsync($commitButton)
+for($retry=0;$retry -lt 200;$retry++){
+  if(-not [MetadataIsolationTimingWindowLocator]::IsWindow($review) -and
+     (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $before){break}
+  Start-Sleep -Milliseconds 150
+}
+if([MetadataIsolationTimingWindowLocator]::IsWindow($review)){
+  throw 'Native positive Commit did not close the actual review'
+}
+if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -eq $before){
+  throw 'Native positive Commit produced no change to the synthetic MP3'
+}
+# Independent raw-byte oracle: no component-provided success flag, no
+# simulated postimage, and not even a reserialization of unrelated tag bytes.
+& python tests/assert_real_virtual_timing_ui_commit.py $commitBefore $source
+if($LASTEXITCODE -ne 0){throw 'Native UI Commit failed independent raw-MP3 preservation oracle'}
+Write-Host 'PRODUCTION_VIRTUAL_TIMING_REAL_UI_COMMIT=PASS'
+
+

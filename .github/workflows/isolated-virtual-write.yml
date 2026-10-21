@@ -18,6 +18,7 @@ on:
       - 'tests/assert_isolated_ux_contracts.py'
       - 'tests/assert_real_audit_uia.ps1'
       - 'tests/assert_real_virtual_timing_uia.ps1'
+      - 'tests/assert_real_virtual_timing_ui_commit.py'
       - 'src/**'
       - 'component.sln'
 
