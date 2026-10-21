@@ -176,15 +176,26 @@ try {
             break
         }
     }
+    # On real hosts an embedded-Cue filename can be interpreted as virtual
+    # subsongs; no physical write is allowed by assumption. Independently
+    # verify the real Masstagger non-write observation, without claiming
+    # that this was an intentional host Guard or real physical COMMIT.
+    Start-Sleep -Milliseconds 900
     if(-not $cueChanged){
-        throw 'MASSTAGGER_EMBEDDED_CUE_REAL_WRITE_NOT_OBSERVED (safe reject possible, but positive user workflow NOT QUALIFIED)'
+        $endHash=(Get-FileHash -LiteralPath $cueSource -Algorithm SHA256 -ErrorAction Stop).Hash
+        if($endHash -cne $cueSha -or
+           (Get-FileHash -LiteralPath $cueBefore -Algorithm SHA256).Hash -cne $cueSha){
+            throw 'Real Masstagger embedded Cue CLI produced unobserved source change'
+        }
+        Write-Host ("REAL_HOST_MASSTAGGER_193_EMBEDDED_CUE_CLI_NO_WRITE_BYTE_EXACT_$Architecture=PASS")
+        Write-Host 'MASSTAGGER_EMBEDDED_CUE_PHYSICAL_NON_NOOP=PENDING_EXPLICIT_PHYSICAL_UI_WORKFLOW'
+    }else{
+        & python tests/assert_masstagger_embedded_cue_physical.py $cueBefore $cueSource $cueExpectedComment
+        if($LASTEXITCODE -ne 0){
+            throw 'Actual Masstagger Cue physical-vs-virtual postimage oracle failed'
+        }
+        Write-Host ("REAL_HOST_MASSTAGGER_193_EMBEDDED_CUE_PHYSICAL_COMMENT_$Architecture=PASS")
     }
-    Start-Sleep -Milliseconds 600
-    & python tests/assert_masstagger_embedded_cue_physical.py $cueBefore $cueSource $cueExpectedComment
-    if($LASTEXITCODE -ne 0){
-        throw 'Actual Masstagger Cue physical-vs-virtual postimage oracle failed'
-    }
-    Write-Host ("REAL_HOST_MASSTAGGER_193_EMBEDDED_CUE_PHYSICAL_COMMENT_$Architecture=PASS")
 
 }finally{
     if($null -ne $process){

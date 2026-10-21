@@ -55,3 +55,15 @@ If the action is rejected, prompts for an unsupported workflow, or
 rewrites the virtual Cue or unrelated physical frame, **the test fails**.
 A positive physical MP3 outcome without a Cue alone cannot qualify this
 more demanding scenario. No private user presets or authorization are inferred.
+
+## Genuine Masstagger with an embedded Cue — two outcomes must stay distinct
+
+The genuine original Masstagger CLI /tag:comment performed a non-no-op physical
+write on the ordinary copyright-free MP3. The same CLI filename targeting a
+two-track embedded-CUE MP3 **did not change the file on either Win32 or x64**.
+This is not evidence of an intentional write guard or a qualified positive
+physical tag update. The runner must verify entire MP3 SHA-256 identity for
+this no-op and report PHYSICAL_NON_NOOP=PENDING_EXPLICIT_PHYSICAL_UI_WORKFLOW.
+A separate real physical-scoped Masstagger UI/tag context write remains
+necessary. If the CLI ever does change this media, the strict independent
+physical ID3, PRIV, raw Cue and MPEG integrity oracle runs instead.
