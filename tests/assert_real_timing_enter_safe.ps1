@@ -18,6 +18,12 @@ if(-not $path.StartsWith($root,[StringComparison]::OrdinalIgnoreCase) -or
    -not (Test-Path -LiteralPath $path -PathType Leaf)){
   throw 'Real Enter test refuses media outside the disposable timing fixture'
 }
+# Refuse Windows reparse points even inside RUNNER_TEMP; their targets could
+# escape the isolated fixture directory.
+if (((Get-Item -LiteralPath $path -Force).Attributes -band
+     [IO.FileAttributes]::ReparsePoint) -ne 0) {
+  throw 'Synthetic keyboard fixture must not be a symlink or reparse point'
+}
 $expected=$PreimageSha256.ToLowerInvariant()
 $actual=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
 if($actual -cne $expected -or
