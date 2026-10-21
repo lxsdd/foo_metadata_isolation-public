@@ -21,8 +21,8 @@ if (@(Get-Process -Name foobar2000 -ErrorAction SilentlyContinue).Count -gt 0) {
     throw 'An unrelated foobar process is running. Refusing test.'
 }
 $specs = @{
-    Win32 = @{ url='https://www.foobar2000.org/downloads/foobar2000_v2.26.1.exe'; hash='849BC4424326DA81049746E9A2255A3A707E56B76CC69ED11714ED23C69ECE52' }
-    x64 = @{ url='https://www.foobar2000.org/downloads/foobar2000-x64_v2.26.1.exe'; hash='72FE15A88B085EE4E49D68114E2BB9655000C2E0FDF40DCC128BBEF8BCAF3600' }
+    Win32 = @{ url='https://www.foobar2000.org/files/foobar2000_v2.26.1.exe'; hash='849BC4424326DA81049746E9A2255A3A707E56B76CC69ED11714ED23C69ECE52' }
+    x64 = @{ url='https://www.foobar2000.org/files/foobar2000-x64_v2.26.1.exe'; hash='72FE15A88B085EE4E49D68114E2BB9655000C2E0FDF40DCC128BBEF8BCAF3600' }
 }
 $spec = $specs[$Architecture]
 $root = Join-Path $env:RUNNER_TEMP ('mi-virtual-write-'+$Architecture+'-'+[Guid]::NewGuid().ToString('N'))
@@ -39,6 +39,7 @@ try {
     if ([IO.Path]::GetFileName($component) -cne 'foo_metadata_isolation.dll') {
         throw 'Unexpected test-only DLL name'
     }
+    # Direct /files URLs match verified winget pins and shared host-smoke, avoiding /downloads redirects.
     # Retry only the same pinned official installer. Never fall back to
     # alternate hosts, unverified caches, or third-party binaries.
     $downloaded = $false

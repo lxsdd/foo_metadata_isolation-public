@@ -24,6 +24,13 @@ The native Audit ListView had previously stored a stale child HWND after host UI
 
 Accessibility evidence: [real Win32/x64 MSAA hard-gate run 39502982702](https://github.com/lxsdd/foo_metadata_isolation-public/actions/runs/39502982702), tested SHA `82a63eed5a4fe824d8dd1297d949d9090f6511ed`. This is a stronger native accessibility assertion but does not fabricate UIA child exposure.
 
+## Real Virtual Cue timing editor + native Discard — 21 October 2026
+
+- Exact tested source SHA `2a05f9b914b5eb8790444b4127eba82ec5563ee9` in [Draft PR #26](https://github.com/lxsdd/foo_metadata_isolation-public/pull/26). Three workflows passed at that SHA: [real foobar2000 Win32/x64 E2E](https://github.com/lxsdd/foo_metadata_isolation-public/actions/runs/39566942096), [Fast Cloud Qualification](https://github.com/lxsdd/foo_metadata_isolation-public/actions/runs/39566942502) and [Qualified Candidate](https://github.com/lxsdd/foo_metadata_isolation-public/actions/runs/39566942498). They are source-only development qualifications, **not** a public release.
+- On **both actual hosts**, a synthetically marked three-track embedded-Cue MP3 reached the real production Virtual timing dialog, loaded the exact `TRACK 02 INDEX 01 00:00:30` preimage and passed native Edit/Cancel and read-only verification. A second dialog changed the native text field to `00:00:35`, entered the actual Commit/Discard TaskDialog, clicked **Discard**, and proved the complete original MP3 byte-identical by SHA-256 (`PRODUCTION_VIRTUAL_TIMING_REVIEW_DISCARD_BYTE_EXACT=PASS`). This deliberately does **not** claim an actual UI-driven Commit.
+- The original run's official foobar2000 2.26.1 installer request failed on both architectures before testing. Retrying **the identical original SHA** successfully downloaded and hash-validated both pinned installers, exposing test-only cross-process text input and nested TaskDialog button discovery defects; those were corrected in the existing Draft branch. The canonical direct official `/files/` paths match the shared host-smoke script and Microsoft's verified winget package URLs; SHA-256 checks and no-untrusted-fallback remain mandatory.
+- Native TaskDialog buttons are functional; hosted UIA button enumeration still yields `PENDING_PROVIDER_UNEXPOSED`. Audit ListView UIA children remain similarly pending. Native success is **not** full UIA or Screenreader acceptance.
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.
