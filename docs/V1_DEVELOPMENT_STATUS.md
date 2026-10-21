@@ -31,6 +31,10 @@ Accessibility evidence: [real Win32/x64 MSAA hard-gate run 39502982702](https://
 - The original run's official foobar2000 2.26.1 installer request failed on both architectures before testing. Retrying **the identical original SHA** successfully downloaded and hash-validated both pinned installers, exposing test-only cross-process text input and nested TaskDialog button discovery defects; those were corrected in the existing Draft branch. The canonical direct official `/files/` paths match the shared host-smoke script and Microsoft's verified winget package URLs; SHA-256 checks and no-untrusted-fallback remain mandatory.
 - Native TaskDialog buttons are functional; hosted UIA button enumeration still yields `PENDING_PROVIDER_UNEXPOSED`. Audit ListView UIA children remain similarly pending. Native success is **not** full UIA or Screenreader acceptance.
 
+### CI publication governance (source-only Draft)
+
+Draft [PR #7](https://github.com/lxsdd/foo_metadata_isolation-public/pull/7) contains an independent source-only candidate-artifact hold and repository-wide workflow audit. The later PRs #9–#26 are stacked without PR #7's original commits; PR #8's hourly migration dispatcher is likewise **not** part of the product head. To avoid silently losing this safety requirement, the reviewed PR #7 audit source is reused on the current Draft head, and both manual `workflow_dispatch` and PR qualification retain packages only on ephemeral Windows runners. The audit runs at Fast Cloud Qualification and rejects newly introduced upload/release surfaces. Re-enabling public candidate artifacts requires the owner's explicit approval; this is not merge/release authorization. Prior versions were not audited by this new gate.
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.

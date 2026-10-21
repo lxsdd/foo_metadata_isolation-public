@@ -55,9 +55,11 @@ jobs:
       - name: Package and verify exact candidate
         shell: pwsh
         run: ./ci/package.ps1 -BuildRoot . -ComponentId foo_metadata_isolation
-      # Draft PRs are tested in the ephemeral runner but may not distribute
-      # component binaries. Manual candidate dispatch retains its old policy.
-      - if: github.event_name == 'workflow_dispatch'
+      # Hard hold until explicit owner authorization: source qualification
+      # on PRs and manual runs must not distribute candidate binaries.
+      # Adopt reviewed source-only publication gate from Draft PR #7.
+      - name: Upload candidate (distribution currently on hold)
+        if: false # Candidate stays on ephemeral CI runner
         uses: actions/upload-artifact@v7
         with:
           name: foo_metadata_isolation-candidate-${{ github.sha }}
