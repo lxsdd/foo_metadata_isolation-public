@@ -3,6 +3,8 @@
 Uses only synthetic MP3s generated in temporary storage, no foobar installer,
 no third-party credentials, and no source metadata writes.
 """
+import hashlib
+import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -28,6 +30,19 @@ def main() -> None:
         generate(before)
         original = before.read_bytes()
         assert original.count(ORIGINAL) == 1, "fixture must have a unique target INDEX"
+        # The native UI path is intentionally fail-closed on an exact generated
+        # source SHA. Assert that this pin is aligned with the current fixture
+        # even on runners unable to download the official foobar installer.
+        host_script = Path(__file__).with_name("assert_real_virtual_timing_uia.ps1")
+        pins = re.findall(r"if\(\$before -ine '([0-9a-fA-F]{64})'\)",
+                          host_script.read_text(encoding="utf-8"))
+        digest = hashlib.sha256(original).hexdigest()
+        assert len(pins) == 1 and pins[0].lower() == digest, (
+            "Native timing UI synthetic-source preimage SHA pin is stale"
+        )
+        bad_pin = ("1" if digest[0] == "0" else "0") + digest[1:]
+        assert bad_pin != digest, "preimage pin mutation must be rejected"
+        print("TIMING_UI_FIXTURE_PREIMAGE_PIN=PASS")
         expected = original.replace(ORIGINAL, CHANGED, 1)
         after.write_bytes(expected)
         verify(before, after)

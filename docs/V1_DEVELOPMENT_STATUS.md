@@ -55,6 +55,10 @@ The existing candidate ZIP verifier now inspects archive entries *before extract
 
 The positive UI Commit oracle now checks the **exact raw Cue postimage** (only `TRACK 02 INDEX 01 00:00:30 → 00:00:35`), every physical ID3 frame payload including opaque `PRIV`, and all MPEG audio bytes independently. It tolerates non-semantic ID3 padding changes or frame reordering by a legitimate host tag writer. Cancel/Discard/rejected writes still require complete original-file byte identity. The offline mutation regression tests both unchanged-container and padded-container valid commits plus five invalid postimages. **This is test-oracle correction only; actual positive host UI Commit is not yet PASS.**
 
+### Stacked Draft consolidation evidence
+
+The checked GitHub HEAD dependencies, the intentionally diverged and unmerged Drafts #7/#8, and the no-merge/no-release plan are recorded in [DRAFT_PR_DEPENDENCY_AUDIT.md](DRAFT_PR_DEPENDENCY_AUDIT.md). Current CI source checks are not authorization to consolidate into `main`.
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.
