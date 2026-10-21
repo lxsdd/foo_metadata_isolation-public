@@ -5,7 +5,7 @@
 ## Gate 0 — freeze evidence and establish disposable boundaries (CI, autonomous)
 
 - Record a single Draft branch **source-head SHA**, the tested GitHub **checkout/PR test-merge SHA**, and its PR-base parent. All linked CI logs must correspond to those exact SHAs; an older green E2E is historical evidence only.
-- Use the pinned official **foobar2000 2.26.1** Win32/x64 installers and their reviewed SHA-256 values. Never use third-party mirrors, unsigned substitute installers, or an unverified package cache. **BLOCKED** while the official downloads refuse connections.
+- Use the pinned original, unmodified **foobar2000 2.26.1** Win32/x64 installers and their reviewed SHA-256 values. The already-existing owner-hosted byte-identical GitHub Release assets may be used only through the immutable checked, same-hash transport helper; never use unknown third-party mirrors, modified installers, or unverified caches. Host acceptance is still pending until an actual exact-HEAD CI run passes.
 - Use disposable Windows runners, isolated portable foobar profiles and deterministically generated MP3/CUE fixtures. Run Windows host/smoke and production UI interaction in **both** architectures; never load unapproved components into the user's active profile.
 - Protect write safety: original source file SHA-256, full physical ID3 frame payloads (including opaque PRIV), MPEG audio, raw embedded CUE, and relevant ReplayGain fields must be measured independently before and after.
 - Keep runner-only candidate packages and all probe-enabled DLLs inaccessible to users and unpublished; current uploads remain disabled.

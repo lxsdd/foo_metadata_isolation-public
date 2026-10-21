@@ -71,7 +71,7 @@ jobs:
           ./tests/assert_candidate_package_layout.ps1
           # PowerShell script throws on failure; inherited LASTEXITCODE is unrelated.
       - name: HARD GATE - live foobar2000 Win32 component load
-        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@4a562946975b610651a0a4e71a422699a7a604d9
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec
         with:
           architecture: Win32
           component-dll: build/foo_metadata_isolation.dll
@@ -80,7 +80,7 @@ jobs:
           required-control-ids: '1201,1202,1203,1204,1208'
           context-fixture: external-cue
       - name: HARD GATE - live foobar2000 x64 component load
-        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@4a562946975b610651a0a4e71a422699a7a604d9
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec
         with:
           architecture: x64
           component-dll: build/x64/foo_metadata_isolation.dll

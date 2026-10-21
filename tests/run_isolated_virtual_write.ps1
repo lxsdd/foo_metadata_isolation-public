@@ -30,7 +30,7 @@ $portable = Join-Path $root 'foobar'
 $exe = Join-Path $portable 'foobar2000.exe'
 $source = Join-Path $root 'track-01.mp3'
 $before = Join-Path $root 'track-01.mp3.before'
-$installer = Join-Path $root 'official-installer.exe'
+$installer = $null
 $process = $null
 
 try {
@@ -39,27 +39,28 @@ try {
     if ([IO.Path]::GetFileName($component) -cne 'foo_metadata_isolation.dll') {
         throw 'Unexpected test-only DLL name'
     }
-    # Direct /files URLs match verified winget pins and shared host-smoke, avoiding /downloads redirects.
-    # Retry only the same pinned official installer. Never fall back to
-    # alternate hosts, unverified caches, or third-party binaries.
-    $downloaded = $false
-    for ($attempt = 1; $attempt -le 3; $attempt++) {
-        try {
-            Invoke-WebRequest -Uri $spec.url -OutFile $installer -TimeoutSec 40
-            $downloaded = $true
-            break
-        } catch {
-            if (Test-Path -LiteralPath $installer) {
-                Remove-Item -LiteralPath $installer -Force
-            }
-            Write-Warning ("Official foobar download attempt {0}/3 failed: {1}" -f $attempt, $_.Exception.GetType().Name)
-            if ($attempt -lt 3) { Start-Sleep -Seconds (2 * $attempt) }
-        }
+    # Use only the already-existing owner-hosted byte-identical ORIGINAL
+    # foobar setup asset, verified independently against the exact Microsoft
+    # winget SHA-256 pin. The transport code is immutable, from the separate
+    # reviewed public infrastructure revision that passed both real hosts.
+    # No new installer uploads, caches shared across jobs, modified builds,
+    # third-party download mirrors or user-machine filesystem access.
+    $transport = Join-Path (Get-Location).Path '.ci_installer/.github/actions/foobar-host-smoke/pinned-installer-cache.ps1'
+    if (-not (Test-Path -LiteralPath $transport -PathType Leaf)) {
+        throw 'Immutable shared official-installer transport source missing'
     }
-    if (-not $downloaded) { throw 'Pinned official foobar installer unavailable after three attempts' }
+    . $transport
+    $filename = if ($Architecture -eq 'Win32') {
+        'foobar2000_v2.26.1.exe'
+    } else {
+        'foobar2000-x64_v2.26.1.exe'
+    }
+    $trustedAsset = 'https://github.com/lxsdd/dev-infrastructure-public/releases/download/foobar-ci-upstream-v2.26.1/' + $filename
+    $installer = Get-FoobarPinnedInstaller -Architecture $Architecture -Version '2.26.1' -Url $spec.url -Sha256 $spec.hash -CacheRoot $env:RUNNER_TEMP -MirrorUrl $trustedAsset
     if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ine $spec.hash) {
-        throw 'Official foobar installer hash mismatch'
+        throw 'Original foobar installer transport failed immutable SHA-256 verification'
     }
+    Write-Host "REAL_E2E_FOOBAR_PINNED_ORIGINAL_INSTALLER_$Architecture=PASS"
     $installed = Start-Process -FilePath $installer -ArgumentList @('/S',"/D=$portable") -PassThru -Wait
     if ($installed.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $exe)) {
         throw 'Isolated official foobar install failed'

@@ -50,6 +50,13 @@ jobs:
           ref: 3482a2beb4d91c9875bc28b91bd43287bab47bc6
           path: .ci_shared
           persist-credentials: false
+      - name: Checkout verified, immutable installer transport helper (source only)
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/dev-infrastructure-public
+          ref: 35369054c56f4c6ccb2f802944e9675852fd35ec
+          path: .ci_installer
+          persist-credentials: false
       - uses: microsoft/setup-msbuild@v2
       - name: Build disposable probe-enabled DLL (never upload)
         shell: pwsh
