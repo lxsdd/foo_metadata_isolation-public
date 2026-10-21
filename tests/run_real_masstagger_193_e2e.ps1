@@ -124,31 +124,11 @@ try {
         try { return (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash }
         catch { return $null }
     }
-    $token='MI_SYNTHETIC_MASSTAGGER_193'
-    $launch=Start-Process -FilePath $exe -WorkingDirectory $portable -ArgumentList @("/tag:comment=$token",('"' + $plain + '"')) -PassThru
-    if(-not $launch.WaitForExit(25000)){throw 'Actual Masstagger CLI launcher did not terminate'}
-    if($launch.ExitCode -ne 0){throw 'Actual Masstagger CLI launcher returned failure'}
-    $changed=$false
-    for($i=0;$i -lt 80;$i++){
-        Start-Sleep -Milliseconds 200
-        $process.Refresh()
-        if($process.HasExited){throw 'Host crashed during Masstagger real tag-write'}
-        $observed=Get-TestMediaSha $plain
-        if($null -ne $observed -and $observed -cne $beforeHash){
-            $changed=$true
-            break
-        }
-    }
-    if(-not $changed){
-        throw 'MASSTAGGER_REAL_TAG_WRITE_NOT_OBSERVED: CLI may be unsupported or not dispatched; do not claim PASS'
-    }
-    Start-Sleep -Milliseconds 600
-    & python tests/assert_masstagger_plain_tag_write.py $before $plain $token
-    if($LASTEXITCODE -ne 0){throw 'Independent Masstagger frame, PRIV, audio integrity oracle failed'}
-    Write-Host ("REAL_HOST_MASSTAGGER_193_PHYSICAL_NON_NOOP_TAG_WRITE_$Architecture=PASS")
-    # True third-party command applied to a new *embedded-CUE* MP3, the
-    # key physical-vs-virtual safety case this component exists to protect.
-    # Never use any owner music or a foobar configuration from a real device.
+    # Stage the copyright-free embedded-CUE fixture, and first investigate
+    # genuine physical-scoped Manage scripts routing in a clean co-loaded
+    # foobar host BEFORE either Masstagger /tag command has run. This
+    # isolates CLI dispatch from leftovers of the plain and Cue write tests.
+    # No owner media, external configuration or credentials are used.
     $cueDir=Join-Path $root 'embedded-cue-masstagger'
     [void](New-Item -ItemType Directory -Path $cueDir)
     $cueSource=Join-Path $cueDir 'track-01.mp3'
@@ -187,6 +167,31 @@ try {
     }
 
 
+
+    $syntheticComment='MI_SYNTHETIC_MASSTAGGER_193'
+    $launch=Start-Process -FilePath $exe -WorkingDirectory $portable -ArgumentList @("/tag:comment=$syntheticComment",('"' + $plain + '"')) -PassThru
+    if(-not $launch.WaitForExit(25000)){throw 'Actual Masstagger CLI launcher did not terminate'}
+    if($launch.ExitCode -ne 0){throw 'Actual Masstagger CLI launcher returned failure'}
+    $changed=$false
+    for($i=0;$i -lt 80;$i++){
+        Start-Sleep -Milliseconds 200
+        $process.Refresh()
+        if($process.HasExited){throw 'Host crashed during Masstagger real tag-write'}
+        $observed=Get-TestMediaSha $plain
+        if($null -ne $observed -and $observed -cne $beforeHash){
+            $changed=$true
+            break
+        }
+    }
+    if(-not $changed){
+        throw 'MASSTAGGER_REAL_TAG_WRITE_NOT_OBSERVED: CLI may be unsupported or not dispatched; do not claim PASS'
+    }
+    Start-Sleep -Milliseconds 600
+    & python tests/assert_masstagger_plain_tag_write.py $before $plain $syntheticComment
+    if($LASTEXITCODE -ne 0){throw 'Independent Masstagger frame, PRIV, audio integrity oracle failed'}
+    Write-Host ("REAL_HOST_MASSTAGGER_193_PHYSICAL_NON_NOOP_TAG_WRITE_$Architecture=PASS")
+    # Independently exercise the real original Masstagger /tag command on the
+    # staged Cue MP3 after the read-only UI diagnosis and plain write oracle.
     $cueLauncher=Start-Process -FilePath $exe -WorkingDirectory $portable -ArgumentList @("/tag:comment=$cueExpectedComment",('"' + $cueSource + '"')) -PassThru
     if(-not $cueLauncher.WaitForExit(25000)){
         throw 'Genuine Masstagger embedded Cue command launcher timed out'
