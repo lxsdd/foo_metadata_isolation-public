@@ -57,7 +57,7 @@ jobs:
           ./ci/test-latest-sdk.ps1
           $wtl=Join-Path (Get-Location) 'wtl/Include'
           if(-not (Test-Path -LiteralPath (Join-Path $wtl 'atlapp.h'))){throw 'Pinned WTL missing'}
-          $env:CL='/I"' + $wtl + '" ' + $env:CL
+          $env:CL='/DMI_REAL_MASSTAGGER_NATIVE_UI_BOOTSTRAP=1 /I"' + $wtl + '" ' + $env:CL
           ./validate_project.ps1
           & msbuild component.sln /t:Build /p:Configuration=Release /p:Platform=${{ matrix.architecture }} /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
           if($LASTEXITCODE -ne 0){throw 'Real two-component host DLL compilation failed'}
