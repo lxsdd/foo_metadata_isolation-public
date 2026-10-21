@@ -28,21 +28,21 @@ def issues(paths,pin,notices):
 # SDK/PFC/libPPUI/WTL files and software.
 def license_issues(text):
     errors=[]
-    if not text.startswith('foo_metadata_isolation\\nMIT License with "Commons Clause" License Condition v1.0\\n'):
+    if not text.startswith('foo_metadata_isolation\nMIT License with "Commons Clause" License Condition v1.0\n'):
         errors.append('wrong project title or absent combined-license heading')
     if 'Copyright (c) 2026 lxsdd' not in text:
         errors.append('missing owner copyright')
-    if text.count('MIT License\\n\\nCopyright (c) 2026 lxsdd') != 1:
+    if text.count('MIT License\n\nCopyright (c) 2026 lxsdd') != 1:
         errors.append('exact MIT grant block missing or duplicated')
     if text.count('"Commons Clause" License Condition v1.0') != 2:
         errors.append('Commons Clause label missing or duplicated')
-    if 'right to\\nSell the Software.' not in text:
+    if 'right to\nSell the Software.' not in text:
         errors.append('Commons Clause Sell restriction removed')
     if 'For purposes of the foregoing, "Sell" means' not in text:
         errors.append('Commons Clause commercial definition missing')
-    if 'Software: foo_metadata_isolation\\nLicense: MIT\\nLicensor: lxsdd' not in text:
+    if 'Software: foo_metadata_isolation\nLicense: MIT\nLicensor: lxsdd' not in text:
         errors.append('wrong exact project/licensor/classification')
-    if 'SDKs, libraries, tools, foobar2000 software and installers are NOT\\nrelicensed by this file' not in text:
+    if 'SDKs, libraries, tools, foobar2000 software and installers are NOT\nrelicensed by this file' not in text:
         errors.append('independent third-party licensing scope absent')
     if 'foo_dj_library_bridge' in text:
         errors.append('source bridge project name leaked into component license')
@@ -67,7 +67,7 @@ def main():
     print('SOURCE_PROVENANCE_MUTATION_CASES=PASS')
     # Mutation tests must catch weakening the owner's combined grant.
     assert license_issues(project_license.replace('Licensor: lxsdd','Licensor: another'))
-    assert license_issues(project_license.replace('right to\\nSell the Software.','right to Sell the Software.'))
+    assert license_issues(project_license.replace('right to\nSell the Software.','right to Sell the Software.'))
     assert license_issues(project_license.replace('Software: foo_metadata_isolation','Software: another'))
     assert license_issues(project_license.replace('"Commons Clause" License Condition v1.0','',1))
     assert not license_issues(project_license)
