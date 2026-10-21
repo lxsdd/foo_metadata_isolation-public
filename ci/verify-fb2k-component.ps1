@@ -28,6 +28,47 @@ $temp = Join-Path ([IO.Path]::GetTempPath()) ('fb2k-verify-' + [Guid]::NewGuid()
 New-Item -ItemType Directory -Force -Path $temp | Out-Null
 
 try {
+    # Inspect ZIP names before extraction. Valid combined packages contain
+    # exactly the two architecture DLLs and, optionally, an x64/ directory.
+    # Never allow disguised binaries, payload extras or duplicate names.
+    $archive = [IO.Compression.ZipFile]::OpenRead($component)
+    try {
+        $allowed = @($DllName, "x64/$DllName", 'x64/')
+        if ([string]::IsNullOrWhiteSpace($DllName)) {
+            $allowed = @('x64/') # Resolve an inferred DLL below for compatibility.
+        }
+        $names = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach ($entry in $archive.Entries) {
+            $entryName = $entry.FullName
+            if ($entryName -match '[\\\\]' -or $entryName.StartsWith('/') -or
+                $entryName.Contains('../') -or $entryName.Contains('/./') -or
+                -not $names.Add($entryName)) {
+                throw 'Combined component contains unsafe or duplicated ZIP names'
+            }
+            if ($entry.Length -gt 67108864) {
+                throw 'Combined component contains oversized ZIP member'
+            }
+        }
+        $actual = @($names | Where-Object { $_ -cne 'x64/' })
+        if ($actual.Count -ne 2) {
+            throw 'Combined component must contain exactly one Win32 and one x64 DLL'
+        }
+        if ([string]::IsNullOrWhiteSpace($DllName)) {
+            $rootNames = @($actual | Where-Object { $_ -notmatch '/' })
+            if ($rootNames.Count -ne 1 -or -not $rootNames[0].EndsWith('.dll',[StringComparison]::OrdinalIgnoreCase)) {
+                throw 'Could not uniquely infer root component DLL'
+            }
+            $DllName = $rootNames[0]
+        }
+        if (-not $names.Contains($DllName) -or -not $names.Contains("x64/$DllName")) {
+            throw 'Combined component has unexpected architecture paths'
+        }
+        if (@($names | Where-Object { $_ -cne $DllName -and $_ -cne "x64/$DllName" -and $_ -cne 'x64/' }).Count -ne 0) {
+            throw 'Combined component has unapproved extra payload entries'
+        }
+    } finally {
+        $archive.Dispose()
+    }
     [IO.Compression.ZipFile]::ExtractToDirectory($component, $temp)
 
     if (Test-Path -LiteralPath (Join-Path $temp 'x86')) {

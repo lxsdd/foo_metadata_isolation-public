@@ -47,6 +47,10 @@ The tracked source/no-user-media gate is **not** a full-history or secrets clear
 
 Both Fast Cloud Qualification and Qualified Candidate explicitly call `validate_release_binaries.ps1` immediately after successful **Release** builds for Win32 and x64. It rejects known test-probe/diagnostic strings and absolute or directory-qualified CodeView PDB paths and requires one portable PDB record per binary. This adds repeatable **binary source hygiene** even when the live foobar installer is unavailable; it does not substitute for the currently blocked actual host launch or for an end-user release sign-off.
 
+### Runner-only component archive integrity (strict ZIP layout)
+
+The existing candidate ZIP verifier now inspects archive entries *before extraction*: exactly one root Win32 DLL, exactly one `x64/` DLL of the same name, optional `x64/` directory, no unexpected entries, duplicate/case-colliding names, path traversal, backslash aliases or members above 64 MiB. Architecture-machine checks remain mandatory. A separate synthetic mutation test runs without an installed foobar host on Windows CI and rejects unauthorized payloads. A passing archive test verifies **structure**, not licensing, runtime, or user acceptance.
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.
