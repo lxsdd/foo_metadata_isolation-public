@@ -67,6 +67,10 @@ For PR CI, `GITHUB_SHA` is the **checked-out synthetic test-merge commit**, not 
 
 The isolated candidate ZIP verifier can require an **ordered pair of original Win32/x64 build paths** and SHA-256 compares each extracted archive DLL to its compiled counterpart. The packager makes that comparison mandatory, and the manifest includes both verified DLL digests plus `PayloadMatchesBuild=true`. A disposable Windows mutation test verifies one matched pair and rejects four forgery/incomplete-provenance cases, including same-architecture modified DLL bytes. This closes a gap where correctly named and architecturally plausible, but wrong, DLLs could otherwise pass structural checks. Packages remain on ephemeral CI runners.
 
+### Ready-to-run acceptance specification (not yet executed)
+
+The [real-host and owner acceptance runbook](V1_REAL_HOST_AND_OWNER_ACCEPTANCE_RUNBOOK.md) records the precise Win32/x64 host, synthetic safety, authenticated Discogger/Masstagger, original-media-copy/111-track, accessibility, performance and final license/approval gates. These are explicitly **PENDING**, not implied by successful source CI. Historical-secret scanning has its own fail-closed workflow; the tracked-tree provenance test must not print an outdated combined `FULL_HISTORY_SECRET_AUDIT=PENDING` label.
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.
