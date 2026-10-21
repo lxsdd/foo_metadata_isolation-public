@@ -162,54 +162,6 @@ try{
     $controls=[OriginalMasstaggerUiDiscovery]::Controls($dialog,$FoobarPid)
     Write-Host ('MASSTAGGER_REAL_UI_CONTROL_COUNT=' + $controls.Count)
     foreach($line in $controls){Write-Host ('MASSTAGGER_REAL_UI_CONTROL=' + $line)}
-    # Independent on-disk report from the actual foobar SDK context-menu
-    # command execution: do not accept a similarly titled unrelated dialog.
-    for($attempt=0;$attempt -lt 50 -and -not (Test-Path -LiteralPath $report);$attempt++){
-        Start-Sleep -Milliseconds 150
-    }
-    if(-not (Test-Path -LiteralPath $report)){
-        throw 'Real Masstagger dialog opened but SDK command report was not completed'
-    }
-    $reportText=Get-Content -LiteralPath $report -Raw
-    if($reportText -notmatch '(?m)^mapping_target_count=1\s*    Write-Host 'MASSTAGGER_EMBEDDED_CUE_PHYSICAL_NON_NOOP=PENDING_REAL_UI_ACTION'
-}finally{
-    if($dialog -ne [IntPtr]::Zero){
-        [OriginalMasstaggerUiDiscovery]::Close($dialog,$FoobarPid)
-        Start-Sleep -Milliseconds 250
-    }
-    if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $before){
-        throw 'Read-only Masstagger UI discovery unexpectedly modified embedded Cue MP3'
-    }
-    Write-Host 'MASSTAGGER_READ_ONLY_UI_DISCOVERY_MP3_BYTE_EXACT=PASS'
-}
- -or
-       $reportText -notmatch '(?m)^mapping_rejected_count=0\s*    Write-Host 'MASSTAGGER_EMBEDDED_CUE_PHYSICAL_NON_NOOP=PENDING_REAL_UI_ACTION'
-}finally{
-    if($dialog -ne [IntPtr]::Zero){
-        [OriginalMasstaggerUiDiscovery]::Close($dialog,$FoobarPid)
-        Start-Sleep -Milliseconds 250
-    }
-    if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $before){
-        throw 'Read-only Masstagger UI discovery unexpectedly modified embedded Cue MP3'
-    }
-    Write-Host 'MASSTAGGER_READ_ONLY_UI_DISCOVERY_MP3_BYTE_EXACT=PASS'
-}
- -or
-       $reportText -notmatch '(?m)^context_command_executed=Manage scripts\s*    Write-Host 'MASSTAGGER_EMBEDDED_CUE_PHYSICAL_NON_NOOP=PENDING_REAL_UI_ACTION'
-}finally{
-    if($dialog -ne [IntPtr]::Zero){
-        [OriginalMasstaggerUiDiscovery]::Close($dialog,$FoobarPid)
-        Start-Sleep -Milliseconds 250
-    }
-    if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $before){
-        throw 'Read-only Masstagger UI discovery unexpectedly modified embedded Cue MP3'
-    }
-    Write-Host 'MASSTAGGER_READ_ONLY_UI_DISCOVERY_MP3_BYTE_EXACT=PASS'
-}
-){
-        throw 'Original Masstagger physical mapped command not proven by SDK context tree'
-    }
-    Write-Host 'MASSTAGGER_REAL_PHYSICAL_CONTEXT_SDK_COMMAND=PASS'
     Write-Host 'MASSTAGGER_EMBEDDED_CUE_GENUINE_MANAGE_SCRIPTS_UI=PASS_OPENED_READ_ONLY'
     Write-Host 'MASSTAGGER_EMBEDDED_CUE_PHYSICAL_NON_NOOP=PENDING_REAL_UI_ACTION'
 }finally{
@@ -222,3 +174,19 @@ try{
     }
     Write-Host 'MASSTAGGER_READ_ONLY_UI_DISCOVERY_MP3_BYTE_EXACT=PASS'
 }
+# Original third-party native dialog may be truly modal: its SDK command's
+# report can be emitted only AFTER Close. Verify it outside the finally block.
+if($dialog -eq [IntPtr]::Zero){throw 'Never obtained original Masstagger native window'}
+for($attempt=0;$attempt -lt 50 -and -not (Test-Path -LiteralPath $report);$attempt++){
+    Start-Sleep -Milliseconds 150
+}
+if(-not (Test-Path -LiteralPath $report)){
+    throw 'Real Masstagger UI observed but genuine SDK command did not complete'
+}
+$reportText=Get-Content -LiteralPath $report -Raw
+if($reportText -notmatch '(?m)^mapping_target_count=1\s*$' -or
+   $reportText -notmatch '(?m)^mapping_rejected_count=0\s*$' -or
+   $reportText -notmatch '(?m)^context_command_executed=Manage scripts\s*$'){
+    throw 'Original Masstagger physical context SDK command not proven'
+}
+Write-Host 'MASSTAGGER_REAL_PHYSICAL_CONTEXT_SDK_COMMAND=PASS'
