@@ -102,7 +102,7 @@ jobs:
           fingerprint={"rule":"generic-api-key","path_hash":"39b056cbb3e8",
               "line":120,"commit_prefix":"f355c31a991f",
               "secret_digest":hashlib.sha256(b"REDACTED").hexdigest()[:12],
-              "secret_length":8,"test_file":True}
+              "secret_length":8,"test_file":False}
           findings=a.get("redacted_findings")
           if a.get("findings")==0 and a.get("rules")=={}:
               print("GITLEAKS_GATE=PASS zero findings in reachable history")
