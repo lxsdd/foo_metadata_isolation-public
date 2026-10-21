@@ -19,6 +19,20 @@ jobs:
       - name: HARD GATE - candidate binaries remain runner-only
         shell: pwsh
         run: python scripts/verify-public-artifact-hold.py
+      - name: Gate - native UI PowerShell parses and full-byte oracle detects corruption
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $tokens=$null
+          $parseErrors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'tests/assert_real_virtual_timing_uia.ps1').Path,
+            [ref]$tokens,[ref]$parseErrors)
+          if(@($parseErrors).Count -gt 0) {
+            throw ('Real timing UI test syntax invalid: ' + ($parseErrors -join '; '))
+          }
+          & python tests/test_real_virtual_timing_ui_commit_oracle.py
+          if($LASTEXITCODE -ne 0){throw 'Native UI Commit preservation oracle self-tests failed'}
       - name: Detect source changes without skipping the required check
         id: changes
         shell: pwsh
