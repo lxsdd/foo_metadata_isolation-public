@@ -63,11 +63,17 @@ A real Win32/x64 accessibility regression now verifies the original audit ListVi
 ## Gate 5 — exact candidate and release authorization
 
 - The strict combined component ZIP must contain only the original Win32 DLL and its corresponding x64 DLL, pass exact **built-binary SHA-256 comparisons**, no unexpected path entries, probe/diagnostic markers, unportable PDB paths or credentials, and report build-head/checkout SHAs separately.
-- Historical Git-source and independent Gitleaks audits must remain green for the exact qualified source. Include the SDK/WTL notices. The **component's own public distribution license is an owner's decision**, not inferred from foobar SDK vendor rights.
+- Historical Git-source and independent Gitleaks audits must remain green for the exact qualified source. Include the SDK/WTL notices. The owner has now **selected MIT plus "Commons Clause" v1.0** for
+the component's own project code/docs, by adopting the existing Bridge grant.
+Check [LICENSE](../LICENSE) and [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)
+for distinct proprietary/project and independently licensed vendor scopes.
+This is **source-available rather than OSI open source**. License selection
+is **PASS**; actual rights/provenance review and final public component
+distribution remain **PENDING**, independently of the chosen license.
 - Release authorization needs **all mandatory gates genuinely PASS**, a final source/CI audit, and an **explicit separate approval by the owner**. Until then **no merge, release, tag, publication, DLL artifact or new background task** is authorized.
 
 ## Evidence vocabulary
 
 Use `PASS` only for a measured real run, `FAIL` for observed behavior that violates a contract, `BLOCKED_INSTALLER` for inaccessible official host binaries, `PENDING_PROVIDER_UNEXPOSED` for unavailable UIA elements, `PENDING_AUTHENTICATED_E2E` for unavailable real provider tests, and `PENDING_OWNER_ACCEPTANCE` for the final personal media/ergonomics/license decision. Each result must carry its SHA, architecture, fixture type and bounded non-private evidence.
 
-**Current truth:** the exact source of [qualified Draft #32](https://github.com/lxsdd/foo_metadata_isolation-public/pull/32) already passed real foobar2000 2.26.1 Win32/x64 native positive Timing UI Commit, byte-exact Cancel/Discard and actual keyboard Enter-to-Discard, physical/virtual and ReplayGain workflows, candidate package integrity, historical source security and SDK 2026-10-01 host E2E. Full UIA row/button providers and actual screen-reader acceptance remain **PENDING**. No real authenticated Discogger/Masstagger user-workflow proof, no real original user 111-track Mix, and no own-source license/final owner authorization were supplied or tested. The read-only owner-copy preflight in this separate Draft cannot substitute for any of these.
+**Current truth:** the exact source of [qualified Draft #32](https://github.com/lxsdd/foo_metadata_isolation-public/pull/32) already passed real foobar2000 2.26.1 Win32/x64 native positive Timing UI Commit, byte-exact Cancel/Discard and actual keyboard Enter-to-Discard, physical/virtual and ReplayGain workflows, candidate package integrity, historical source security and SDK 2026-10-01 host E2E. Full UIA row/button providers and actual screen-reader acceptance remain **PENDING**. No real authenticated Discogger/Masstagger user-workflow proof, no original user copyrighted Mix, and no final owner acceptance were supplied or tested. A copyright-free 111-track 84.4-minute ~193 MiB synthetic Mix passed on genuine Win32/x64 hosts. The owner adopted MIT plus Commons Clause v1.0 for the project-owned code; release authorization remains withheld. The read-only owner-copy preflight in this separate Draft cannot substitute for any of these.

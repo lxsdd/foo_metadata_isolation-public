@@ -2,6 +2,22 @@
 
 Current version: `1.0.0-dev`. This document records **source-only draft CI qualification** in the public repository. It does not supersede private historical acceptance reports and does not authorize a merge, tag or release.
 
+## 21 October 2026 — project-owned license adopted from foo_dj_library_bridge
+
+The owner explicitly authorized reusing the previously settled Bridge grant:
+**MIT License + "Commons Clause" License Condition v1.0**, with
+`Copyright (c) 2026 lxsdd` and `Licensor: lxsdd`. The complete
+Metadata Isolation-specific text is the top-level [LICENSE](../LICENSE).
+It governs **only original project-owned code and documentation**, not foobar2000
+SDK, pfc, libPPUI, WTL, Microsoft tools, player/installer or other separately
+licensed third-party works. The Commons Clause prohibits *Sell* as defined
+there; this is **source-available, not an OSI-approved open-source license**.
+All original vendor notices remain independently applicable. Exact text/scope
+and restrictive-grant mutation checks are mandatory source-provenance gates
+on each new CI head. License selection is now **RESOLVED**; legal rights
+verification, authentic plug-in/UX end tests, merge and binary release
+authorization remain **PENDING**. No artifact publication is enabled.
+
 ## Previously completed qualification (historical record)
 
 | Phase | Scope | Verdict | Notes |
@@ -37,7 +53,7 @@ Draft [PR #7](https://github.com/lxsdd/foo_metadata_isolation-public/pull/7) con
 
 ### Source provenance audit (development check, not release authorization)
 
-A fail-closed, mutation-tested tracked-file gate verifies the absence of committed user audio, databases, credentials-by-filename, packaged DLLs and installer archives. The three bundled foobar SDK \`.lib\` files are the *only* permitted tracked prebuilt libraries and are pinned to their reviewed Git object hashes. The SDK, pfc, libPPUI, WTL and combined third-party notices must all remain present and linked. This is **not** a full binary license review or a historical secrets scan. There is no explicit top-level license for the project's own code in the checked Draft snapshot; license selection/authorization is **PENDING OWNER DECISION**, not inferred from the vendor SDK's licenses.
+A fail-closed, mutation-tested tracked-file gate verifies the absence of committed user audio, databases, credentials-by-filename, packaged DLLs and installer archives. The three bundled foobar SDK \`.lib\` files are the *only* permitted tracked prebuilt libraries and are pinned to their reviewed Git object hashes. The SDK, pfc, libPPUI, WTL and combined third-party notices must all remain present and linked. This is **not** a full binary license review or a historical secrets scan. There is no explicit top-level license for the project's own code in the checked Draft snapshot; license selection has since been resolved by the owner as **MIT + Commons Clause v1.0** (see top-of-document current update), but that decision does not complete distribution provenance or release acceptance.
 
 ### Historical Git/secret audit — distinct from tracked-tree check
 
