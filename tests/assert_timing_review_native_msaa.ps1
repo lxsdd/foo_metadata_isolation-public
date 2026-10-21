@@ -32,6 +32,9 @@ public static class MetadataIsolationReviewMsaa {
   [DllImport("user32.dll")]
   static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
   [DllImport("user32.dll")]
+  static extern int GetDlgCtrlID(IntPtr hwnd);
+  public static int ButtonId(IntPtr hwnd) { return GetDlgCtrlID(hwnd); }
+  [DllImport("user32.dll")]
   static extern bool IsWindowEnabled(IntPtr hwnd);
   [DllImport("user32.dll")]
   static extern bool IsWindowVisible(IntPtr hwnd);
@@ -80,14 +83,21 @@ $ownerPid=[uint32]$FoobarPid
 [MetadataIsolationReviewMsaa]::RequireButton($CommitHwnd,'Commit',$ownerPid)
 [MetadataIsolationReviewMsaa]::RequireButton($DiscardHwnd,'Discard',$ownerPid)
 Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_MSAA_BUTTON_NAMES_AND_ROLES=PASS'
-$default=[MetadataIsolationReviewMsaa]::DefaultButton($ReviewHwnd,$ownerPid)
-if($default -eq 1){
-  throw 'Unsafe default: Commit is selected as the native TaskDialog default action'
+$commitId=[MetadataIsolationReviewMsaa]::ButtonId($CommitHwnd)
+$discardId=[MetadataIsolationReviewMsaa]::ButtonId($DiscardHwnd)
+if($commitId -ne 0x2001 -or $discardId -ne 0x2002){
+  throw 'Native TaskDialog did not retain disjoint custom Commit/Discard action IDs'
 }
-if($default -eq 2){
+Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DISTINCT_ACTION_IDS=PASS'
+$default=[MetadataIsolationReviewMsaa]::DefaultButton($ReviewHwnd,$ownerPid)
+if($default -eq $commitId){
+  throw 'Unsafe default: custom Commit action selected as TaskDialog native default'
+}
+if($default -eq $discardId){
   Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DEFAULT_DISCARD=PASS'
 }else{
-  # Some hosted TaskDialogs do not expose DM_GETDEFID to out-of-process
-  # callers. This never becomes a false PASS or changes the default.
-  Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DEFAULT_DISCARD=PENDING_NATIVE_NOT_EXPOSED'
+  # Windows TaskDialog can report a generic internal IDOK as its native
+  # dialog default regardless of nDefaultButton and custom buttons.
+  # IDOK is NOT our custom Commit action: application fails closed.
+  Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_GENERIC_DEFAULT_NON_COMMIT=PASS'
 }

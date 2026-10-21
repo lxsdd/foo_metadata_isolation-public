@@ -77,9 +77,14 @@ assert len(numbers) == len(set(numbers))
 # default IDCANCEL. Never allow Commit to be the first custom action.
 review = SESSION[SESSION.index("bool show_commit_dialog("):]
 review = review[:review.index("struct timing_dialog_state")]
-assert review.index('{ IDCANCEL, L"Discard" }') < review.index('{ IDOK, L"Commit" }')
-assert "config.nDefaultButton = IDCANCEL;" in review
-assert "return selected == IDOK;" in review
+assert review.index('{ button_discard, L"Discard" }') < review.index('{ button_commit, L"Commit" }')
+assert "constexpr int button_commit = 0x2001;" in review
+assert "constexpr int button_discard = 0x2002;" in review
+assert "config.nDefaultButton = button_discard;" in review
+assert "int selected = button_discard;" in review
+assert "TDF_ALLOW_DIALOG_CANCELLATION" in review
+assert "return selected == button_commit;" in review
+assert "return selected == IDOK;" not in review
 
 # Do not advertise the not-yet-universal automatic-preview/completion model.
 assert "Always show change preview" not in RESOURCE

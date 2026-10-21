@@ -2542,28 +2542,31 @@ bool show_commit_dialog(
     pfc::stringcvt::string_wide_from_utf8 summary_wide(summary.c_str());
     // TaskDialog owns these native buttons and exposes no per-button tooltip API.
     // The visible action labels and content therefore carry the complete accessible meaning.
-    // The real foobar-host TaskDialog can select the first custom button as
-    // its native default even with nDefaultButton=IDCANCEL. Put the safe,
-    // non-writing Discard action FIRST as defense in depth against implicit
-    // Enter/default activation; explicit Commit still requires a direct click.
+    // On real Win32/x64 TaskDialogs, DM_GETDEFID reported IDOK even when
+    // nDefaultButton explicitly requested IDCANCEL (and Discard was first).
+    // Therefore NEVER make an implicit system IDOK equivalent to Commit.
+    // These custom IDs are distinct from all standard dialog actions.
+    constexpr int button_commit = 0x2001;
+    constexpr int button_discard = 0x2002;
     const TASKDIALOG_BUTTON buttons[] = {
-        { IDCANCEL, L"Discard" },
-        { IDOK, L"Commit" },
+        { button_discard, L"Discard" },
+        { button_commit, L"Commit" },
     };
     TASKDIALOGCONFIG config = {};
     config.cbSize = sizeof(config);
     config.hwndParent = core_api::get_main_window();
-    config.dwFlags = TDF_SIZE_TO_CONTENT;
+    config.dwFlags = TDF_SIZE_TO_CONTENT | TDF_ALLOW_DIALOG_CANCELLATION;
     config.pszWindowTitle = L"Metadata Isolation";
     config.pszMainInstruction = instruction;
     config.pszContent = summary_wide;
     config.cButtons = _countof(buttons);
     config.pButtons = buttons;
-    config.nDefaultButton = IDCANCEL;
-    int selected = IDCANCEL;
+    config.nDefaultButton = button_discard;
+    int selected = button_discard;
     const HRESULT result = TaskDialogIndirect(&config, &selected, nullptr, nullptr);
     if (FAILED(result)) throw pfc::exception("Could not open the commit/discard review dialog");
-    return selected == IDOK;
+    // Generic IDOK (e.g. Enter / native dialog fallback) never commits.
+    return selected == button_commit;
 }
 
 struct timing_dialog_state {
