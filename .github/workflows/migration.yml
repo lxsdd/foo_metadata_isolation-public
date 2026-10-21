@@ -64,6 +64,11 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           ./validate_project.ps1
+          $wtl = Join-Path (Get-Location) 'wtl/Include'
+          if (-not (Test-Path -LiteralPath (Join-Path $wtl 'atlapp.h') -PathType Leaf)) {
+            throw 'Required WTL header atlapp.h absent for SDK 2026-10-01 helpers'
+          }
+          $env:CL = '/I"' + $wtl + '" ' + $env:CL
           foreach($platform in @('Win32','x64')) {
             & msbuild 'component.sln' /t:Build /p:Configuration=Release /p:Platform=$platform /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
             if($LASTEXITCODE -ne 0){throw "Build failed: $platform"}
