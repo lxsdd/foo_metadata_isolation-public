@@ -35,6 +35,10 @@ Accessibility evidence: [real Win32/x64 MSAA hard-gate run 39502982702](https://
 
 Draft [PR #7](https://github.com/lxsdd/foo_metadata_isolation-public/pull/7) contains an independent source-only candidate-artifact hold and repository-wide workflow audit. The later PRs #9–#26 are stacked without PR #7's original commits; PR #8's hourly migration dispatcher is likewise **not** part of the product head. To avoid silently losing this safety requirement, the reviewed PR #7 audit source is reused on the current Draft head, and both manual `workflow_dispatch` and PR qualification retain packages only on ephemeral Windows runners. The audit runs at Fast Cloud Qualification and rejects newly introduced upload/release surfaces. Re-enabling public candidate artifacts requires the owner's explicit approval; this is not merge/release authorization. Prior versions were not audited by this new gate.
 
+### Source provenance audit (development check, not release authorization)
+
+A fail-closed, mutation-tested tracked-file gate verifies the absence of committed user audio, databases, credentials-by-filename, packaged DLLs and installer archives. The three bundled foobar SDK \`.lib\` files are the *only* permitted tracked prebuilt libraries and are pinned to their reviewed Git object hashes. The SDK, pfc, libPPUI, WTL and combined third-party notices must all remain present and linked. This is **not** a full binary license review or a historical secrets scan. There is no explicit top-level license for the project's own code in the checked Draft snapshot; license selection/authorization is **PENDING OWNER DECISION**, not inferred from the vendor SDK's licenses.
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.

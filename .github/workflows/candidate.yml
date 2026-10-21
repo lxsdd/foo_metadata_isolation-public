@@ -30,6 +30,8 @@ jobs:
             & msbuild 'component.sln' /t:Build /p:Configuration=Release /p:Platform=$platform /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
             if($LASTEXITCODE -ne 0){throw "Build failed: $platform"}
           }
+          & python tests/verify_source_release_provenance.py
+          if($LASTEXITCODE -ne 0){throw 'Source-only release provenance validation failed'}
           & python tests/test_real_virtual_timing_ui_commit_oracle.py
           if($LASTEXITCODE -ne 0){throw 'Timing UI Commit preservation oracle self-tests failed'}
           foreach($test in @('assert_partial_commit_contract.py','assert_structured_logging_contract.py','assert_phase10_locale_contract.py','assert_phase12_physical_contract.py','assert_phase14_format_contract.py','assert_virtual_ux_contract.py','assert_physical_metadata_audit_contract.py','assert_ui_hardening_contract.py','assert_tooltip_contract.py')) {

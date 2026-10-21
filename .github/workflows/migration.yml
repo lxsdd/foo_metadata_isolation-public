@@ -19,6 +19,11 @@ jobs:
       - name: HARD GATE - candidate binaries remain runner-only
         shell: pwsh
         run: python scripts/verify-public-artifact-hold.py
+      - name: Gate - tracked source and vendor provenance
+        shell: pwsh
+        run: |
+          python tests/verify_source_release_provenance.py
+          if($LASTEXITCODE -ne 0){throw 'Source-only release provenance validation failed'}
       - name: Gate - native UI PowerShell parses and full-byte oracle detects corruption
         shell: pwsh
         run: |
