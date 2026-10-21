@@ -42,6 +42,17 @@ jobs:
             & python "tests/$test"
             if($LASTEXITCODE -ne 0){throw "Static regression failed: $test"}
           }
+      # Verify a local ephemeral package before contacting the external
+      # foobar2000 download host. Never upload from Draft or manual CI.
+      - name: Package and verify exact candidate (runner-only)
+        shell: pwsh
+        run: |
+          ./ci/package.ps1 -BuildRoot . -ComponentId foo_metadata_isolation
+          $manifest=Get-Content -LiteralPath candidate/manifest.json -Raw | ConvertFrom-Json
+          if($manifest.release_authorized -ne $false -or $manifest.runtime_acceptance -cne 'PENDING') {
+            throw 'Candidate manifest illegally authorizes a release or runtime acceptance'
+          }
+          Write-Host 'RUNNER_ONLY_CANDIDATE_FORMAT=PASS; runtime acceptance remains PENDING'
       - name: HARD GATE - live foobar2000 Win32 component load
         uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@4a562946975b610651a0a4e71a422699a7a604d9
         with:
@@ -60,9 +71,6 @@ jobs:
           expected-window-title: 'Metadata Isolation - Physical Metadata Audit'
           required-control-ids: '1201,1202,1203,1204,1208'
           context-fixture: external-cue
-      - name: Package and verify exact candidate
-        shell: pwsh
-        run: ./ci/package.ps1 -BuildRoot . -ComponentId foo_metadata_isolation
       # Hard hold until explicit owner authorization: source qualification
       # on PRs and manual runs must not distribute candidate binaries.
       # Adopt reviewed source-only publication gate from Draft PR #7.
