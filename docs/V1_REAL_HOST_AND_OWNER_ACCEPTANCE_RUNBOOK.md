@@ -31,6 +31,12 @@ Use actual foobar hosts rather than a mock or a test-driver substitute for any a
 - Restore original third-party configurations byte-exactly, and verify their final hashes against preimages. No credentials or private paths in logs, reports, Git, pull requests or user-visible artifacts.
 - If authentication/provider availability is absent, **PENDING_AUTHENTICATED_E2E**, not a green simulated result.
 
+## Prepared read-only media clone command (not executed on owner data)
+
+A safe local PowerShell preflight is now available at `scripts/Prepare-MetadataIsolationAcceptanceCopy.ps1`. It requires the owner to explicitly choose an **existing original Mix file** and an **independent existing destination directory**; it never edits the source, overwrites an existing clone, follows reparse points, uploads anything, installs a foobar component or authorizes any metadata write. It checks the original SHA-256 before and after copying, checks the clone SHA-256 and length, and creates a local source-path-free verification manifest marked `write_acceptance=NOT_AUTHORIZED`. Its separate CI job uses **only invented bytes**, not the user's Mix; synthetic copy PASS is not real media/cuesheet/performance PASS.
+
+After local paths are selected by the owner, the basic command is `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Prepare-MetadataIsolationAcceptanceCopy.ps1 -SourceMix "X:\path\actual-mix.mp3" -DestinationRoot "C:\independent-existing-test-folder"`. This is documentation, **not a request to execute now**. A separately authorized run would still need to open the copied file in genuine foobar2000 and validate 111 indexed subsongs, UI and behavior; do not touch the original to run it.
+
 ## Gate 3 — owner's real large 111-track Mix (deferred until owner can safely validate)
 
 - The owner must explicitly authorize this step, identify the appropriate source and decide an **independent disposable copy** location. Never mutate, reorganize or replace the live Mix implicitly.
@@ -56,4 +62,4 @@ Use actual foobar hosts rather than a mock or a test-driver substitute for any a
 
 Use `PASS` only for a measured real run, `FAIL` for observed behavior that violates a contract, `BLOCKED_INSTALLER` for inaccessible official host binaries, `PENDING_PROVIDER_UNEXPOSED` for unavailable UIA elements, `PENDING_AUTHENTICATED_E2E` for unavailable real provider tests, and `PENDING_OWNER_ACCEPTANCE` for the final personal media/ergonomics/license decision. Each result must carry its SHA, architecture, fixture type and bounded non-private evidence.
 
-**Current truth:** package provenance/structure, source and secret hygiene, and static/offline oracles are green on the latest Draft. Older native Cancel/Discard and other host E2E have historical green evidence. The new exact Draft's positive real UI Commit, final authenticated plug-in workflows, the owner's real Mix, full UIA/screen-reader usability and license/release authorization remain **NOT PASS**.
+**Current truth:** the exact source of [qualified Draft #32](https://github.com/lxsdd/foo_metadata_isolation-public/pull/32) already passed real foobar2000 2.26.1 Win32/x64 native positive Timing UI Commit, byte-exact Cancel/Discard and actual keyboard Enter-to-Discard, physical/virtual and ReplayGain workflows, candidate package integrity, historical source security and SDK 2026-10-01 host E2E. Full UIA row/button providers and actual screen-reader acceptance remain **PENDING**. No real authenticated Discogger/Masstagger user-workflow proof, no real original user 111-track Mix, and no own-source license/final owner authorization were supplied or tested. The read-only owner-copy preflight in this separate Draft cannot substitute for any of these.
