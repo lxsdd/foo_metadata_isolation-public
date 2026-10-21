@@ -39,7 +39,23 @@ try {
     if ([IO.Path]::GetFileName($component) -cne 'foo_metadata_isolation.dll') {
         throw 'Unexpected test-only DLL name'
     }
-    Invoke-WebRequest -Uri $spec.url -OutFile $installer
+    # Retry only the same pinned official installer. Never fall back to
+    # alternate hosts, unverified caches, or third-party binaries.
+    $downloaded = $false
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Invoke-WebRequest -Uri $spec.url -OutFile $installer -TimeoutSec 40
+            $downloaded = $true
+            break
+        } catch {
+            if (Test-Path -LiteralPath $installer) {
+                Remove-Item -LiteralPath $installer -Force
+            }
+            Write-Warning ("Official foobar download attempt {0}/3 failed: {1}" -f $attempt, $_.Exception.GetType().Name)
+            if ($attempt -lt 3) { Start-Sleep -Seconds (2 * $attempt) }
+        }
+    }
+    if (-not $downloaded) { throw 'Pinned official foobar installer unavailable after three attempts' }
     if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ine $spec.hash) {
         throw 'Official foobar installer hash mismatch'
     }
