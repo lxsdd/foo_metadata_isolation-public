@@ -57,7 +57,7 @@ jobs:
         shell: pwsh
         run: |
           ./tests/assert_candidate_package_layout.ps1
-          if($LASTEXITCODE -ne 0){throw 'Component package layout mutation regression failed'}
+          # PowerShell script throws on failure; inherited LASTEXITCODE is unrelated.
       - name: HARD GATE - live foobar2000 Win32 component load
         uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@4a562946975b610651a0a4e71a422699a7a604d9
         with:

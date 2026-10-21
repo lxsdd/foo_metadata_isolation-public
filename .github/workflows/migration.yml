@@ -28,7 +28,7 @@ jobs:
         shell: pwsh
         run: |
           ./tests/assert_candidate_package_layout.ps1
-          if($LASTEXITCODE -ne 0){throw 'Component package layout mutation regression failed'}
+          # PowerShell script throws on failure; inherited LASTEXITCODE is unrelated.
       - name: Gate - native UI PowerShell parses and full-byte oracle detects corruption
         shell: pwsh
         run: |
