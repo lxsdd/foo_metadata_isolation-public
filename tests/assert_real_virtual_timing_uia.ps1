@@ -238,6 +238,10 @@ if($nativeCommit -cne 'Commit' -or $nativeDiscard -cne 'Discard'){
   throw 'Native timing review labels changed between discovery and validation'
 }
 Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_NATIVE_ACTIONS=PASS'
+# This is independent of the hosted UIA provider. Verify actual button
+# accessible names and roles through oleacc/MSAA, not Win32 captions alone.
+& ./tests/assert_timing_review_native_msaa.ps1 -FoobarPid $FoobarPid -ReviewHwnd $review -CommitHwnd $commitHwnd -DiscardHwnd $discardHwnd
+
 if($commitFound -and $null -ne $discardButton){
   $invoke=$null
   if($discardButton.TryGetCurrentPattern(

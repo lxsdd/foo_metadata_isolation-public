@@ -75,6 +75,10 @@ The [real-host and owner acceptance runbook](V1_REAL_HOST_AND_OWNER_ACCEPTANCE_R
 
 The formerly unavailable direct `www.foobar2000.org/files/` download caused external infrastructure failures in actual Win32/x64 E2E. A newer [shared owner-controlled infrastructure revision](https://github.com/lxsdd/dev-infrastructure-public/commit/35369054c56f4c6ccb2f802944e9675852fd35ec) has already launched **both real foobar hosts** from existing versioned, **unmodified original installer files** in the owner's existing GitHub Releases, enforcing the same independently pinned Microsoft winget SHA-256 digests. PR #26 now uses this reviewed exact revision for candidate host-smoke and checks out its source-only installer helper for E2E. Every installer is freshly SHA-256 verified, is job-local and ephemeral; this PR **does not create, upload or distribute a component DLL or any new installer asset**. Fail closed on mirror/network/checksum mismatch. The actual native timing Commit remains **NOT PASS until this Draft's new Win32/x64 run completes successfully**. This is a transport-only change, not a production C++ alteration.
 
+### Separate native TaskDialog MSAA accessibility qualification — experimental Draft
+
+The existing actual Win32/x64 UI tests confirm the native Commit/Discard captions and real mouse interaction, but the hosted UIA provider did not enumerate its buttons. A separate, disposable test branch checks the **independent oleacc/MSAA name and pushbutton role** for both actual review controls and refuses a native default action of Commit. This is an *experimental additional gate*, not proof of full UIA or screen-reader behavior until the exact branch completes real host CI. Production C++ and the previously qualified PR #26 remain unchanged.
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.
