@@ -157,6 +157,25 @@ try{
     if($dialog -eq [IntPtr]::Zero){
         $tops=[OriginalMasstaggerUiDiscovery]::WindowTitles($FoobarPid)
         Write-Host ('MASSTAGGER_HOST_TOP_LEVEL_TITLES=' + ($tops -join ';'))
+        if(Test-Path -LiteralPath $report){
+            $summary=@(Get-Content -LiteralPath $report | Where-Object {
+                $_ -match '^(mapping_(input|target|rejected)_count|physical_info_load_status|write_result|context_command_executed)='
+            })
+            Write-Host ('MASSTAGGER_PHYSICAL_SDK_REPORT=' + ($summary -join ';'))
+        }else{
+            Write-Host 'MASSTAGGER_PHYSICAL_SDK_REPORT=NOT_EMITTED'
+        }
+        foreach($name in @('Playback error','Error')){
+            $errorDialog=[OriginalMasstaggerUiDiscovery]::FindExactTitle($FoobarPid,$name)
+            if($errorDialog -ne [IntPtr]::Zero){
+                $labels=[OriginalMasstaggerUiDiscovery]::Controls($errorDialog,$FoobarPid)
+                foreach($entry in $labels){
+                    if($entry -match '^(Static|Button):'){
+                        Write-Host ('MASSTAGGER_HOST_DIALOG=' + $name + ';' + $entry)
+                    }
+                }
+            }
+        }
         throw 'MASSTAGGER_MANAGE_SCRIPTS_NOT_OBSERVED: original UI did not open via physical context_command'
     }
     $controls=[OriginalMasstaggerUiDiscovery]::Controls($dialog,$FoobarPid)
