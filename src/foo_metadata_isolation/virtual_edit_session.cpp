@@ -2542,9 +2542,13 @@ bool show_commit_dialog(
     pfc::stringcvt::string_wide_from_utf8 summary_wide(summary.c_str());
     // TaskDialog owns these native buttons and exposes no per-button tooltip API.
     // The visible action labels and content therefore carry the complete accessible meaning.
+    // The real foobar-host TaskDialog can select the first custom button as
+    // its native default even with nDefaultButton=IDCANCEL. Put the safe,
+    // non-writing Discard action FIRST as defense in depth against implicit
+    // Enter/default activation; explicit Commit still requires a direct click.
     const TASKDIALOG_BUTTON buttons[] = {
-        { IDOK, L"Commit" },
         { IDCANCEL, L"Discard" },
+        { IDOK, L"Commit" },
     };
     TASKDIALOGCONFIG config = {};
     config.cbSize = sizeof(config);

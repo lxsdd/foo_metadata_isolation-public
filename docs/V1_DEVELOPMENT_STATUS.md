@@ -79,6 +79,10 @@ The formerly unavailable direct `www.foobar2000.org/files/` download caused exte
 
 The existing actual Win32/x64 UI tests confirm the native Commit/Discard captions and real mouse interaction, but the hosted UIA provider did not enumerate its buttons. A separate, disposable test branch checks the **independent oleacc/MSAA name and pushbutton role** for both actual review controls and refuses a native default action of Commit. This is an *experimental additional gate*, not proof of full UIA or screen-reader behavior until the exact branch completes real host CI. Production C++ and the previously qualified PR #26 remain unchanged.
 
+### Real native default-action discrepancy and safety remediation (experimental Draft #28)
+
+An independent Windows/MSAA experiment exposed **exact accessible names and pushbutton roles** for both real TaskDialog actions on Win32 and x64. However, `DM_GETDEFID` returned **IDOK / Commit** as the current native default on both hosts, even though the source already set `config.nDefaultButton=IDCANCEL`. This is a measured native-dialog discrepancy, not proof by itself that Enter caused an actual write. As defense in depth, the review now **orders non-writing Discard first**, followed by explicit Commit, while retaining `nDefaultButton=IDCANCEL` and strict return semantics. A separate Windows E2E must prove the default is safe and that Cancel/Discard/explicit positive Commit still work. Until such a run is green this fix is **NOT QUALIFIED** and PR #26 remains unchanged. Microsoft documents that an invalid or missing default ID falls back to the first button; a non-writing first button is safe under both interpretations.
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.
