@@ -60,6 +60,18 @@ public static class MetadataIsolationTimingWindowLocator {
     GetWindowTextW(hwnd,builder,builder.Capacity);
     return builder.ToString();
   }
+  [DllImport("user32.dll",CharSet=CharSet.Unicode)]
+  static extern bool SetWindowTextW(IntPtr hwnd,string value);
+  [DllImport("user32.dll",EntryPoint="PostMessageW",SetLastError=true)]
+  static extern bool PostMessageW(IntPtr hwnd,uint msg,IntPtr wparam,IntPtr lparam);
+  public static void SetText(IntPtr hwnd,string value){
+    if(hwnd==IntPtr.Zero || !SetWindowTextW(hwnd,value))
+      throw new InvalidOperationException("Timing UI EDIT rejected new value");
+  }
+  public static void ClickAsync(IntPtr hwnd){
+    if(hwnd==IntPtr.Zero || !PostMessageW(hwnd,0x00F5,IntPtr.Zero,IntPtr.Zero))
+      throw new InvalidOperationException("Timing UI Review button not clickable");
+  }
   public static IntPtr Find(int pid,string title) {
     IntPtr result=IntPtr.Zero; int matches=0;
     EnumWindows((hwnd,ignored)=>{
@@ -135,3 +147,67 @@ if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $before){
   throw 'Cancelled real Virtual timing dialog modified original media'
 }
 Write-Host 'PRODUCTION_VIRTUAL_TIMING_SYNTHETIC_MEDIA_UNCHANGED=PASS'
+
+# Second independent dialog attempt: change INDEX 01, reach actual review,
+# then explicitly discard. No actual source mutation is permitted.
+$launched=Start-Process -FilePath $Executable -WorkingDirectory $Workdir -ArgumentList @(
+  '/metadata-isolation-probe-open-real-virtual-timing',('"' + $source + '"')) -PassThru
+$window=[IntPtr]::Zero
+for($retry=0;$retry -lt 100;$retry++){
+  $window=[MetadataIsolationTimingWindowLocator]::Find($FoobarPid,'Metadata Isolation - Virtual timing')
+  if($window -ne [IntPtr]::Zero){break}
+  Start-Sleep -Milliseconds 200
+}
+if($window -eq [IntPtr]::Zero){throw 'Real Virtual timing editor did not reopen for review/discard'}
+$editHwnd=[MetadataIsolationTimingWindowLocator]::GetDlgItem($window,1104)
+if($editHwnd -eq [IntPtr]::Zero){throw 'Real Virtual timing edit field absent'}
+[MetadataIsolationTimingWindowLocator]::SetText($editHwnd,'00:00:35')
+if([MetadataIsolationTimingWindowLocator]::TextByNativeMessage($editHwnd) -cne '00:00:35'){
+  throw 'Real timing editor did not accept changed CD frame value'
+}
+[MetadataIsolationTimingWindowLocator]::ClickAsync(
+  [MetadataIsolationTimingWindowLocator]::GetDlgItem($window,1))
+$review=[IntPtr]::Zero
+for($retry=0;$retry -lt 160;$retry++){
+  $review=[MetadataIsolationTimingWindowLocator]::Find($FoobarPid,'Metadata Isolation')
+  if($review -ne [IntPtr]::Zero){break}
+  Start-Sleep -Milliseconds 150
+}
+if($review -eq [IntPtr]::Zero){
+  throw 'Actual timing change failed to reach native Commit/Discard review'
+}
+$reviewRoot=[System.Windows.Automation.AutomationElement]::FromHandle($review)
+if($null -eq $reviewRoot){throw 'Actual timing review has no accessible root'}
+$buttons=$reviewRoot.FindAll(
+  [System.Windows.Automation.TreeScope]::Descendants,
+  [System.Windows.Automation.PropertyCondition]::new(
+    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+    [System.Windows.Automation.ControlType]::Button))
+$commitFound=$false
+$discardButton=$null
+foreach($control in $buttons){
+  if($control.Current.Name -ceq 'Commit'){$commitFound=$true}
+  if($control.Current.Name -ceq 'Discard'){$discardButton=$control}
+}
+if(-not $commitFound -or $null -eq $discardButton){
+  throw 'Native timing review missing explicitly labelled Commit or Discard actions'
+}
+Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_ACTIONS=PASS'
+$invoke=$null
+if(-not $discardButton.TryGetCurrentPattern(
+  [System.Windows.Automation.InvokePattern]::Pattern,[ref]$invoke)){
+  throw 'Actual Discard button has no UIA InvokePattern'
+}
+([System.Windows.Automation.InvokePattern]$invoke).Invoke()
+for($retry=0;$retry -lt 80;$retry++){
+  if(-not [MetadataIsolationTimingWindowLocator]::IsWindow($review)){break}
+  Start-Sleep -Milliseconds 100
+}
+if([MetadataIsolationTimingWindowLocator]::IsWindow($review)){
+  throw 'Actual Discard command did not close the review'
+}
+if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $before){
+  throw 'Discarding actual Virtual timing preview modified source MP3'
+}
+Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DISCARD_BYTE_EXACT=PASS'
+
