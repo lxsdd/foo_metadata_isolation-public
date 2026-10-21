@@ -41,6 +41,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
+rem The SDK 2026-10-01 helper project uses WTL headers independent of component.props.
+set CL=/I"%~dp0wtl\Include" %CL%
 echo Building foo_metadata_isolation Win32 Release...
 "!MSBUILD!" component.sln /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v145 /p:CppLanguageStandard=cpp23 !TEST_PROBE_PROPERTY! /t:!BUILD_TARGET!
 if errorlevel 1 exit /b 1

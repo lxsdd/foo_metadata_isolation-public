@@ -86,6 +86,10 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           ./ci/test-latest-sdk.ps1
+          # New SDK helpers project needs WTL headers before it is compiled.
+          $wtl=(Join-Path (Get-Location) 'wtl/Include')
+          if(-not (Test-Path -LiteralPath (Join-Path $wtl 'atlapp.h') -PathType Leaf)){throw 'Pinned WTL atlapp.h missing'}
+          $env:CL='/I"' + $wtl + '" ' + $env:CL
           ./validate_project.ps1
           foreach($platform in @('Win32','x64')) {
             & msbuild 'component.sln' /t:Build /p:Configuration=Release /p:Platform=$platform /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
