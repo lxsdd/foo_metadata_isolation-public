@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)][ValidateSet('Win32','x64')][string]$Architecture,
     [Parameter(Mandatory)][string]$ComponentDll,
     [switch]$RunLargeBenchmark,
+    [switch]$RunFullLength111Mix,
     [switch]$RunDirectGuard,
     [switch]$RunPhysicalMetadata,
     [switch]$RunVirtualReplayGain,
@@ -190,6 +191,43 @@ try {
             if ($LASTEXITCODE -ne 0) { throw "111-track oracle failed: repeats=$repeats" }
             Write-Host "REAL_HOST_111_VIRTUAL_COMMIT_$Architecture=PASS repeats=$repeats"
         }
+    }
+
+    if ($RunFullLength111Mix) {
+        # No owner's copyrighted media. Deterministic 320 kbit/s synthetic
+        # MPEG-1 Layer III, approx. 84 minutes / 193 MiB, 111 CUE tracks.
+        # Full-file audio hashes are streamed by the independent oracle.
+        $caseDir = Join-Path $root 'full-length-111-synthetic-320k'
+        $source = Join-Path $caseDir 'track-01.mp3'
+        $before = Join-Path $caseDir 'track-01.mp3.before'
+        & python tests/make_full_length_111_mix.py $source
+        if ($LASTEXITCODE -ne 0) { throw 'Full-length synthetic 111-track Mix generation failed' }
+        $size = (Get-Item -LiteralPath $source).Length
+        if ($size -lt 180000000 -or $size -gt 240000000) {
+            throw 'Full-length synthetic Mix outside verified size bounds'
+        }
+        Copy-Item -LiteralPath $source -Destination $before -ErrorAction Stop
+        if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne
+            (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
+            throw 'Full-length synthetic Mix baseline copy changed'
+        }
+        $inventory = Invoke-IsolatedProbe '/metadata-isolation-probe-embedded-cue-inventory'
+        $inventoryText = Get-Content -LiteralPath $inventory -Raw
+        if ($inventoryText -notmatch '(?m)^inventory_subsong_count=111[ \t\r\n]*$') {
+            throw 'Real foobar host did not expose 111 full-length virtual tracks'
+        }
+        if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne
+            (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
+            throw 'Full-length 111-track read-only host inventory changed source'
+        }
+        Remove-Item -LiteralPath $inventory -Force
+        Write-Host "REAL_HOST_FULL_LENGTH_111_INVENTORY_$Architecture=PASS;Bytes=$size"
+        $report = Invoke-IsolatedProbe '/metadata-isolation-probe-projection-benchmark'
+        & python tests/assert_full_length_111_mix.py $before $source $report
+        if ($LASTEXITCODE -ne 0) {
+            throw "Full-length 111-track audio/CUE/ID3 streaming oracle failed ($Architecture)"
+        }
+        Write-Host "REAL_HOST_FULL_LENGTH_111_VIRTUAL_COMMIT_$Architecture=PASS"
     }
 
     if ($RunVirtualReplayGain) {

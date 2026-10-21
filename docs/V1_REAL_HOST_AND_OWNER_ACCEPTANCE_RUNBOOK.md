@@ -37,6 +37,10 @@ A safe local PowerShell preflight is now available at `scripts/Prepare-MetadataI
 
 After local paths are selected by the owner, the basic command is `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Prepare-MetadataIsolationAcceptanceCopy.ps1 -SourceMix "X:\path\actual-mix.mp3" -DestinationRoot "C:\independent-existing-test-folder"`. This is documentation, **not a request to execute now**. A separately authorized run would still need to open the copied file in genuine foobar2000 and validate 111 indexed subsongs, UI and behavior; do not touch the original to run it.
 
+## Copyright-free full-length 111-track Mix substitute
+
+The owner cannot upload the real 111-track recording because of file size and copyright; **do not request an upload of that source**. The real Windows host test now has a separate fully synthetic 111-track MP3 substitute: reproducible MPEG-1 Layer III frames at 44.1 kHz / **320 kbit/s**, approximately **84.4 minutes**, roughly **193 MiB**, and 111 embedded Cue INDEX entries 45 seconds apart. The test generates the file inside disposable Windows runner temporary directories, executes real foobar2000 Win32/x64 subtrack inventory and a non-no-op 111-track virtual TITLE commit, and uses streaming hashes to verify every MPEG payload byte remained unchanged, all physical ID3/opaque PRIV fields are preserved, and only intended CUE TITLE values changed. This is an independent scale/reliability test, not a claim that the user's unreleased copyrighted work was obtained or examined. Read-only performance/ergonomics comparisons on synthetic content can be completed autonomously. **Actual user-specific sound, metadata peculiarities and personal UX feedback remain outside CI's evidence**.
+
 ## Gate 3 — owner's real large 111-track Mix (deferred until owner can safely validate)
 
 - The owner must explicitly authorize this step, identify the appropriate source and decide an **independent disposable copy** location. Never mutate, reorganize or replace the live Mix implicitly.
