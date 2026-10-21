@@ -31,6 +31,27 @@ public static class MetadataIsolationReviewMsaa {
     [MarshalAs(UnmanagedType.Interface)] out IAccessibleName accessible);
   [DllImport("user32.dll")]
   static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+  [ComImport, Guid("618736e0-3c3d-11cf-810c-00aa00389b71"),
+   InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+  public interface IAccessibleState {
+    [DispId(-5007)] object this[object child] {get;}
+  }
+  [DllImport("user32.dll",EntryPoint="GetWindowLongW")]
+  static extern int GetWindowLong(IntPtr hwnd,int index);
+  public static bool DefaultPushStyle(IntPtr hwnd) {
+    return (GetWindowLong(hwnd,-16)&15)==1; // BS_DEFPUSHBUTTON
+  }
+  public static int ButtonMsaaState(IntPtr hwnd) {
+    var iid=new Guid("618736e0-3c3d-11cf-810c-00aa00389b71");
+    IAccessibleName accessible=null;
+    int hr=AccessibleObjectFromWindow(hwnd,-4,ref iid,out accessible);
+    if(hr!=0 || accessible==null) return -1;
+    try {
+      var state=((IAccessibleState)accessible)[0];
+      return state==null?-1:Convert.ToInt32(state);
+    } catch(COMException) { return -1; }
+    finally { Marshal.ReleaseComObject(accessible); }
+  }
   [DllImport("user32.dll")]
   static extern int GetDlgCtrlID(IntPtr hwnd);
   public static int ButtonId(IntPtr hwnd) { return GetDlgCtrlID(hwnd); }
@@ -83,25 +104,27 @@ $ownerPid=[uint32]$FoobarPid
 [MetadataIsolationReviewMsaa]::RequireButton($CommitHwnd,'Commit',$ownerPid)
 [MetadataIsolationReviewMsaa]::RequireButton($DiscardHwnd,'Discard',$ownerPid)
 Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_MSAA_BUTTON_NAMES_AND_ROLES=PASS'
-$commitId=[MetadataIsolationReviewMsaa]::ButtonId($CommitHwnd)
-$discardId=[MetadataIsolationReviewMsaa]::ButtonId($DiscardHwnd)
-# TaskDialog native child HWND IDs can differ from pButtons[].nButtonID:
-# their displayed actions must be distinguished by independently MSAA
-# verified HWND/caption pairs, not by assuming that IDOK=Commit.
-Write-Host ("PRODUCTION_VIRTUAL_TIMING_REVIEW_NATIVE_BUTTON_IDS=commit:{0};discard:{1}" -f $commitId,$discardId)
-if($commitId -le 0 -or $discardId -le 0 -or $commitId -eq $discardId){
-  throw 'Native review controls do not have distinct identifiable button HWNDs'
+# TaskDialog's native child button IDs are both zero in the tested hosted
+# controls. DM_GETDEFID reports an internal IDOK, not an attributable
+# caption or custom pButtons[].nButtonID. It must not be misreported as
+# evidence of the actual default or an unsafe Commit action.
+$commitNativeId=[MetadataIsolationReviewMsaa]::ButtonId($CommitHwnd)
+$discardNativeId=[MetadataIsolationReviewMsaa]::ButtonId($DiscardHwnd)
+$dialogInternalDefault=[MetadataIsolationReviewMsaa]::DefaultButton($ReviewHwnd,$ownerPid)
+Write-Host ("PRODUCTION_VIRTUAL_TIMING_REVIEW_UNMAPPED_NATIVE_IDS=commit:{0};discard:{1};dialog:{2}" -f $commitNativeId,$discardNativeId,$dialogInternalDefault)
+$commitState=[MetadataIsolationReviewMsaa]::ButtonMsaaState($CommitHwnd)
+$discardState=[MetadataIsolationReviewMsaa]::ButtonMsaaState($DiscardHwnd)
+$commitStyle=[MetadataIsolationReviewMsaa]::DefaultPushStyle($CommitHwnd)
+$discardStyle=[MetadataIsolationReviewMsaa]::DefaultPushStyle($DiscardHwnd)
+Write-Host ("PRODUCTION_VIRTUAL_TIMING_REVIEW_ACCESSIBLE_DEFAULT_OBSERVATION=commit_state:{0};discard_state:{1};commit_style:{2};discard_style:{3}" -f $commitState,$discardState,$commitStyle,$discardStyle)
+# MSAA STATE_SYSTEM_DEFAULT (0x100) and native BS_DEFPUSHBUTTON
+# are independent observations of actual visible buttons.
+if($commitStyle -or ($commitState -ge 0 -and ($commitState -band 0x100) -ne 0)){
+  throw 'Unsafe native review: actual Commit control has default button state'
 }
-Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DISTINCT_NATIVE_BUTTONS=PASS'
-$default=[MetadataIsolationReviewMsaa]::DefaultButton($ReviewHwnd,$ownerPid)
-Write-Host ("PRODUCTION_VIRTUAL_TIMING_REVIEW_NATIVE_DEFAULT_ID={0}" -f $default)
-if($default -eq $commitId){
-  throw 'Unsafe default: the actual visible Commit HWND is selected as default'
-}
-if($default -eq $discardId){
-  Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DEFAULT_DISCARD=PASS'
+if($discardStyle -or ($discardState -ge 0 -and ($discardState -band 0x100) -ne 0)){
+  Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_VISIBLE_DEFAULT_DISCARD=PASS'
 }else{
-  # A non-button / internal TaskDialog ID is not positive evidence of
-  # the safe default, even when application commit selection is isolated.
-  Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DEFAULT_DISCARD=PENDING_NATIVE_ID_UNMAPPED'
+  Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_VISIBLE_DEFAULT=PENDING_PROVIDER_UNEXPOSED'
 }
+Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_GENERIC_IDOK_NEVER_EQUALS_CUSTOM_COMMIT=STATIC_GUARD'
