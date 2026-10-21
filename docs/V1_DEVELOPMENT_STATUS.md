@@ -43,6 +43,10 @@ A fail-closed, mutation-tested tracked-file gate verifies the absence of committ
 
 The tracked source/no-user-media gate is **not** a full-history or secrets clearance. The separate `source-history-triage.yml` reads the existing immutable, source-only history and Gitleaks scanners from `lxsdd/dev-infrastructure-public@4a562946975b610651a0a4e71a422699a7a604d9`, scans public reachability including available PR refs, and emits redacted categories/counts only. It does not request secrets or credentials, upload artifacts, or approve redistributability. After the first scan, the workflow was hardened: it now **fails closed** unless all reachable blobs were read, PR refs were scanned, the sole binary matches are exactly the three pinned SDK libraries, and the independent pinned Gitleaks scan has zero findings. Unexpected historical material blocks qualification pending triage. This is still heuristic and not full legal clearance. No full release sign-off is implied.
 
+### Probe-free release binary hard gate
+
+Both Fast Cloud Qualification and Qualified Candidate explicitly call `validate_release_binaries.ps1` immediately after successful **Release** builds for Win32 and x64. It rejects known test-probe/diagnostic strings and absolute or directory-qualified CodeView PDB paths and requires one portable PDB record per binary. This adds repeatable **binary source hygiene** even when the live foobar installer is unavailable; it does not substitute for the currently blocked actual host launch or for an end-user release sign-off.
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.

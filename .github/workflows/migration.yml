@@ -78,6 +78,10 @@ jobs:
             & msbuild 'component.sln' /t:Build /p:Configuration=Release /p:Platform=$platform /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
             if($LASTEXITCODE -ne 0){throw "Build failed: $platform"}
           }
+          # Release configuration only. Reject diagnostic/test-probe strings and
+          # absolute/non-portable PDB paths before any candidate packaging.
+          & ./validate_release_binaries.ps1
+          if($LASTEXITCODE -ne 0){throw 'Probe-free release binaries gate failed'}
           foreach($test in @('assert_partial_commit_contract.py','assert_structured_logging_contract.py','assert_phase10_locale_contract.py','assert_phase12_physical_contract.py','assert_phase14_format_contract.py','assert_virtual_ux_contract.py','assert_physical_metadata_audit_contract.py','assert_ui_hardening_contract.py','assert_tooltip_contract.py')) {
             & python "tests/$test"
             if($LASTEXITCODE -ne 0){throw "Static regression failed: $test"}
