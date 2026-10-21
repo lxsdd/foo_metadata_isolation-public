@@ -158,6 +158,11 @@ try {
     Copy-Item -LiteralPath $cueSource -Destination $cueBefore
     $cueSha=(Get-FileHash -LiteralPath $cueSource -Algorithm SHA256).Hash
     $cueExpectedComment='MI_SYNTHETIC_CUE_PHYSICAL_193'
+    # Open the authentic native third-party Manage Scripts dialog through the
+    # foobar2000 documented context command; read UI controls only and assert
+    # complete media SHA remains unchanged. This is a discovery gate, not a
+    # falsely claimed physical Masstagger commit.
+    & ./tests/inspect_real_masstagger_manage_scripts.ps1 -FoobarPid $process.Id -Executable $exe -Workdir $portable -FixturePath $cueSource
     $cueLauncher=Start-Process -FilePath $exe -WorkingDirectory $portable -ArgumentList @("/tag:comment=$cueExpectedComment",('"' + $cueSource + '"')) -PassThru
     if(-not $cueLauncher.WaitForExit(25000)){
         throw 'Genuine Masstagger embedded Cue command launcher timed out'
