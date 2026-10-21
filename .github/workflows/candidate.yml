@@ -11,6 +11,16 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Checkout pinned foobar SDK 2026-10-01 for eventual manual candidate
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/foobar2000_component_template
+          ref: 31a35947a7527826c2199491692802e3ce3d8bd7
+          path: external/sdk-template
+          persist-credentials: false
+      - name: Verify and stage current SDK (CI workspace only)
+        shell: pwsh
+        run: ./ci/test-latest-sdk.ps1
       - uses: microsoft/setup-msbuild@v2
       - name: Validate repository and build both architectures
         shell: pwsh
