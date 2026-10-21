@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory)][int]$FoobarPid,
     [Parameter(Mandatory)][string]$Executable,
     [Parameter(Mandatory)][string]$Workdir,
-    [Parameter(Mandatory)][string]$FixturePath
+    [Parameter(Mandatory)][string]$FixturePath,
+    [switch]$ExpectDirectVirtualGuard
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -118,6 +119,22 @@ public static class OriginalMasstaggerUiDiscovery {
 
 $launcher=$null
 $dialog=[IntPtr]::Zero
+# Windows native top-level windows are genuine component/UI effects; never
+# synthesize dialog success. Only assert the negative security scenario when
+# the genuine original Masstagger /tag on this two-CUE file was confirmed to
+# leave every media byte unchanged by the separate independent oracle.
+if($ExpectDirectVirtualGuard){
+    $guardNames=@([OriginalMasstaggerUiDiscovery]::WindowTitles($FoobarPid) |
+        Where-Object { $_ -ceq 'Metadata Isolation: write blocked' })
+    Write-Host ('MASSTAGGER_REAL_NATIVE_DIRECT_VIRTUAL_GUARD_DIALOG_COUNT=' + $guardNames.Count)
+    if($guardNames.Count -ne 2){
+        throw 'Genuine Masstagger two-track embedded Cue rejected/no-op but two native write-guard notifications not observed'
+    }
+    if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $before){
+        throw 'Genuine two-track native guarded media changed before diagnostic'
+    }
+    Write-Host 'MASSTAGGER_GENUINE_EMBEDDED_CUE_DIRECT_VIRTUAL_WRITE_GUARD_NATIVE_TWO_DIALOGS=PASS'
+}
 try{
     # First verify that genuine external foobar CLI dispatch reaches the
     # existing read-only in-component inventory probe on this synthetic CUE.
