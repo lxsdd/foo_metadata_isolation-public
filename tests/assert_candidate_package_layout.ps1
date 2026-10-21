@@ -59,6 +59,45 @@ try {
   Check-Package @(@($rootDll,$win),@("x64/$rootDll",$x64),@('../rogue.dll',$win)) $false 'traversal entry'
   Check-Package @(@($rootDll,$win),@("x64/$rootDll",$x64),@("x64\rogue.dll",$win)) $false 'backslash alias'
   Write-Host 'CANDIDATE_ZIP_LAYOUT_MUTATIONS=PASS (2 valid, 7 rejected)'
+
+  # Same-machine modified DLL payloads must fail even if ZIP/PE layout passes.
+  $builtWin=Join-Path $root 'expected-win32.dll'
+  $builtX64=Join-Path $root 'expected-x64.dll'
+  [IO.File]::WriteAllBytes($builtWin,$win)
+  [IO.File]::WriteAllBytes($builtX64,$x64)
+  $verified=New-TestPackage $normal
+  $proof=& ./ci/verify-fb2k-component.ps1 -ComponentPath $verified -DllName $rootDll -ExpectedWin32DllPath $builtWin -ExpectedX64DllPath $builtX64
+  if(-not $proof.PayloadMatchesBuild -or
+     $proof.Win32DllSha256 -cne (Get-FileHash -LiteralPath $builtWin -Algorithm SHA256).Hash.ToLowerInvariant() -or
+     $proof.X64DllSha256 -cne (Get-FileHash -LiteralPath $builtX64 -Algorithm SHA256).Hash.ToLowerInvariant()) {
+    throw 'Matched built DLL SHA-256 evidence missing'
+  }
+
+  function Reject-ExpectedDll([string]$case,[string]$expectedWin,[string]$expectedX64) {
+    $rejected=$false
+    try {
+      & ./ci/verify-fb2k-component.ps1 -ComponentPath $verified -DllName $rootDll -ExpectedWin32DllPath $expectedWin -ExpectedX64DllPath $expectedX64 | Out-Null
+    } catch { $rejected=$true }
+    if(-not $rejected){throw ("Archive accepted forged or incomplete built-DLL provenance: "+$case)}
+  }
+  $wrongWin=[byte[]]$win.Clone()
+  $wrongWin[80]=0x7f
+  $wrongX64=[byte[]]$x64.Clone()
+  $wrongX64[80]=0x7f
+  $badWin=Join-Path $root 'modified-same-machine-win32.dll'
+  $badX64=Join-Path $root 'modified-same-machine-x64.dll'
+  [IO.File]::WriteAllBytes($badWin,$wrongWin)
+  [IO.File]::WriteAllBytes($badX64,$wrongX64)
+  Reject-ExpectedDll 'forged Win32 bytes' $badWin $builtX64
+  Reject-ExpectedDll 'forged x64 bytes' $builtWin $badX64
+  Reject-ExpectedDll 'forged both architecture bytes' $badWin $badX64
+  $rejected=$false
+  try {
+    & ./ci/verify-fb2k-component.ps1 -ComponentPath $verified -DllName $rootDll -ExpectedWin32DllPath $builtWin | Out-Null
+  } catch { $rejected=$true }
+  if(-not $rejected){throw 'Archive accepted one-sided expected build provenance'}
+  Write-Host 'CANDIDATE_ZIP_BUILT_DLL_DIGEST_MUTATIONS=PASS (1 matched, 4 rejected)'
+
 } finally {
   if(Test-Path -LiteralPath $root){Remove-Item -LiteralPath $root -Recurse -Force}
 }

@@ -63,6 +63,10 @@ The checked GitHub HEAD dependencies, the intentionally diverged and unmerged Dr
 
 For PR CI, `GITHUB_SHA` is the **checked-out synthetic test-merge commit**, not automatically the Draft branch HEAD. The runner-only packaging step now requires full Git ancestry, verifies that the test-merge parents are exactly the event's base and PR-head SHAs, and records both `built_checkout_sha` and `source_head_sha` in the manifest. Manual direct-branch runs record their checked-out commit as both. This eliminates misleading single-SHA labels without authorizing a release, artifact upload, or replacing real host validation.
 
+### Candidate archive bytes verified against exact compiled DLLs
+
+The isolated candidate ZIP verifier can require an **ordered pair of original Win32/x64 build paths** and SHA-256 compares each extracted archive DLL to its compiled counterpart. The packager makes that comparison mandatory, and the manifest includes both verified DLL digests plus `PayloadMatchesBuild=true`. A disposable Windows mutation test verifies one matched pair and rejects four forgery/incomplete-provenance cases, including same-architecture modified DLL bytes. This closes a gap where correctly named and architecturally plausible, but wrong, DLLs could otherwise pass structural checks. Packages remain on ephemeral CI runners.
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.

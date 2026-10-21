@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][string]$ComponentPath,
-    [string]$DllName
+    [string]$DllName,
+    [string]$ExpectedWin32DllPath,
+    [string]$ExpectedX64DllPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -91,12 +93,31 @@ try {
     if ($rootMachine -ne 0x014c) { throw ('Root DLL machine 0x{0:X4}; expected x86/I386 0x014C.' -f $rootMachine) }
     if ($x64Machine -ne 0x8664) { throw ('x64 DLL machine 0x{0:X4}; expected AMD64 0x8664.' -f $x64Machine) }
 
+    # Machine and ZIP structure are not content provenance. The packed bytes
+    # must be the exact compiler outputs of the checked-out source tree.
+    $hasWin32 = -not [string]::IsNullOrWhiteSpace($ExpectedWin32DllPath)
+    $hasX64 = -not [string]::IsNullOrWhiteSpace($ExpectedX64DllPath)
+    if ($hasWin32 -ne $hasX64) {
+        throw 'Expected built DLL paths must be supplied together'
+    }
+    $actualWin32Hash = (Get-FileHash -LiteralPath $rootDll -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actualX64Hash = (Get-FileHash -LiteralPath $x64Dll -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($hasWin32) {
+        $builtWin32Hash = (Get-FileHash -LiteralPath $ExpectedWin32DllPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $builtX64Hash = (Get-FileHash -LiteralPath $ExpectedX64DllPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actualWin32Hash -cne $builtWin32Hash -or $actualX64Hash -cne $builtX64Hash) {
+            throw 'Packaged DLL bytes do not match the exact built Win32 and x64 DLLs'
+        }
+    }
     $componentHash = (Get-FileHash -LiteralPath $component -Algorithm SHA256).Hash.ToLowerInvariant()
     [pscustomobject]@{
         Component = $component
         DllName = $DllName
         RootMachine = ('0x{0:X4}' -f $rootMachine)
         X64Machine = ('0x{0:X4}' -f $x64Machine)
+        Win32DllSha256 = $actualWin32Hash
+        X64DllSha256 = $actualX64Hash
+        PayloadMatchesBuild = $hasWin32
         Sha256 = $componentHash
         Status = 'PASS'
     }
