@@ -56,6 +56,18 @@ public static class OriginalMasstaggerUiDiscovery {
     },IntPtr.Zero);
     return result.ToArray();
   }
+  public static IntPtr FindExactTitle(int pid,string wanted){
+    IntPtr found=IntPtr.Zero;int count=0;
+    EnumWindows((h,ignored)=>{
+      uint owner;GetWindowThreadProcessId(h,out owner);
+      if(owner==(uint)pid && IsWindowVisible(h) &&
+         String.Equals(Label(h),wanted,StringComparison.Ordinal)){
+        count++;found=h;
+      }
+      return true;
+    },IntPtr.Zero);
+    return count==1?found:IntPtr.Zero;
+  }
   public static IntPtr FindMasstagger(int pid){
     IntPtr found=IntPtr.Zero;int count=0;
     EnumWindows((h,ignored)=>{
@@ -107,6 +119,22 @@ public static class OriginalMasstaggerUiDiscovery {
 $launcher=$null
 $dialog=[IntPtr]::Zero
 try{
+    # Genuine first-run foobar2000 2.26.1 launches its Quick Appearance
+    # Setup as a modal window on a NEW disposable profile. It can prevent
+    # the documented context command reaching Masstagger. Dismiss ONLY the
+    # uniquely titled, real modal in the already PID/path-verified host.
+    $intro=[OriginalMasstaggerUiDiscovery]::FindExactTitle($FoobarPid,'Quick Appearance Setup')
+    if($intro -ne [IntPtr]::Zero){
+        [OriginalMasstaggerUiDiscovery]::Close($intro,$FoobarPid)
+        for($attempt=0;$attempt -lt 30;$attempt++){
+            Start-Sleep -Milliseconds 150
+            if([OriginalMasstaggerUiDiscovery]::FindExactTitle($FoobarPid,'Quick Appearance Setup') -eq [IntPtr]::Zero){break}
+        }
+        if([OriginalMasstaggerUiDiscovery]::FindExactTitle($FoobarPid,'Quick Appearance Setup') -ne [IntPtr]::Zero){
+            throw 'Disposable initial foobar Quick Appearance modal cannot be safely dismissed'
+        }
+        Write-Host 'MASSTAGGER_DISPOSABLE_HOST_FIRST_RUN_MODAL_DISMISSED=PASS'
+    }
     # foobar2000 documented genuine context-menu CLI, not our own probe.
     $launcher=Start-Process -FilePath $exepath -WorkingDirectory $Workdir -PassThru -ArgumentList @('/context_command:"Manage Scripts"',('"' + $source + '"'))
     if(-not $launcher.WaitForExit(25000)){
