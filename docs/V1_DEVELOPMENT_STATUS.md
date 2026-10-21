@@ -51,6 +51,10 @@ Both Fast Cloud Qualification and Qualified Candidate explicitly call `validate_
 
 The existing candidate ZIP verifier now inspects archive entries *before extraction*: exactly one root Win32 DLL, exactly one `x64/` DLL of the same name, optional `x64/` directory, no unexpected entries, duplicate/case-colliding names, path traversal, backslash aliases or members above 64 MiB. Architecture-machine checks remain mandatory. A separate synthetic mutation test runs without an installed foobar host on Windows CI and rejects unauthorized payloads. A passing archive test verifies **structure**, not licensing, runtime, or user acceptance.
 
+### Native timing Commit oracle — strict contents, not false positives
+
+The positive UI Commit oracle now checks the **exact raw Cue postimage** (only `TRACK 02 INDEX 01 00:00:30 → 00:00:35`), every physical ID3 frame payload including opaque `PRIV`, and all MPEG audio bytes independently. It tolerates non-semantic ID3 padding changes or frame reordering by a legitimate host tag writer. Cancel/Discard/rejected writes still require complete original-file byte identity. The offline mutation regression tests both unchanged-container and padded-container valid commits plus five invalid postimages. **This is test-oracle correction only; actual positive host UI Commit is not yet PASS.**
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.

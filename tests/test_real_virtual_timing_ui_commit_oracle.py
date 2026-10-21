@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 
 from assert_real_virtual_timing_ui_commit import verify, ORIGINAL, CHANGED
 from make_isolated_timing_mp3 import main as generate
+from make_isolated_embedded_mp3 import syncsafe
 
 
 def rejects(before: Path, after: Path, payload: bytes) -> None:
@@ -31,6 +32,18 @@ def main() -> None:
         after.write_bytes(expected)
         verify(before, after)
 
+        # A genuine ID3 tag writer can change padding without changing
+        # physical fields, opaque PRIV, the raw Cue or the MPEG payload.
+        # This previously failed due to whole-file byte equality.
+        tag_size = ((expected[6] << 21) | (expected[7] << 14) |
+                    (expected[8] << 7) | expected[9])
+        padding = 16
+        repacked = (expected[:6] + syncsafe(tag_size + padding) +
+                    expected[10:10 + tag_size] + bytes(padding) +
+                    expected[10 + tag_size:])
+        after.write_bytes(repacked)
+        verify(before, after)
+
         rejects(before, after, original)  # no-op
         rejects(before, after, original.replace(ORIGINAL, b"    INDEX 01 00:00:36", 1))
         rejects(before, after, expected[:-1] + bytes([expected[-1] ^ 1]))  # audio byte
@@ -47,7 +60,7 @@ def main() -> None:
                 b"REM UNIQUE_KEEP exactly-preservEd", 1,
             ),
         )
-    print("TIMING_REAL_UI_COMMIT_ORACLE_MUTATIONS=PASS (valid + five invalid)")
+    print("TIMING_REAL_UI_COMMIT_ORACLE_MUTATIONS=PASS (2 valid layouts + five invalid)")
 
 
 if __name__ == "__main__":
