@@ -152,7 +152,7 @@ try {
     $cueDir=Join-Path $root 'embedded-cue-masstagger'
     [void](New-Item -ItemType Directory -Path $cueDir)
     $cueSource=Join-Path $cueDir 'track-01.mp3'
-    & python tests/make_isolated_embedded_mp3.py $cueSource
+    & python tests/make_masstagger_embedded_duration_mp3.py $cueSource
     if($LASTEXITCODE -ne 0){throw 'Embedded Cue synthetic fixture failed'}
     $cueBefore=Join-Path $cueDir 'track-01.before'
     Copy-Item -LiteralPath $cueSource -Destination $cueBefore
