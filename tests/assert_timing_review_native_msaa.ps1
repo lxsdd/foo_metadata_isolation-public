@@ -75,12 +75,12 @@ public static class MetadataIsolationReviewMsaa {
   }
 }
 '@
-$pid=[uint32]$FoobarPid
-[MetadataIsolationReviewMsaa]::RequireOwner($ReviewHwnd,$pid)
-[MetadataIsolationReviewMsaa]::RequireButton($CommitHwnd,'Commit',$pid)
-[MetadataIsolationReviewMsaa]::RequireButton($DiscardHwnd,'Discard',$pid)
+$ownerPid=[uint32]$FoobarPid
+[MetadataIsolationReviewMsaa]::RequireOwner($ReviewHwnd,$ownerPid)
+[MetadataIsolationReviewMsaa]::RequireButton($CommitHwnd,'Commit',$ownerPid)
+[MetadataIsolationReviewMsaa]::RequireButton($DiscardHwnd,'Discard',$ownerPid)
 Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_MSAA_BUTTON_NAMES_AND_ROLES=PASS'
-$default=[MetadataIsolationReviewMsaa]::DefaultButton($ReviewHwnd,$pid)
+$default=[MetadataIsolationReviewMsaa]::DefaultButton($ReviewHwnd,$ownerPid)
 if($default -eq 1){
   throw 'Unsafe default: Commit is selected as the native TaskDialog default action'
 }
