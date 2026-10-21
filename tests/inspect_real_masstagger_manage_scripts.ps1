@@ -135,13 +135,19 @@ try{
         }
         Write-Host 'MASSTAGGER_DISPOSABLE_HOST_FIRST_RUN_MODAL_DISMISSED=PASS'
     }
-    # foobar2000 documented genuine context-menu CLI, not our own probe.
-    $launcher=Start-Process -FilePath $exepath -WorkingDirectory $Workdir -PassThru -ArgumentList @('/context_command:"Manage Scripts"',('"' + $source + '"'))
+    # Reuse the EXISTING Metadata Isolation physical-context routing test:
+    # map Cue subsongs to metadb_handle(path,0), load physical metadata,
+    # locate the ORIGINAL third-party 'Manage scripts' command by its exact
+    # SDK context-menu name, then execute the original Masstagger UI.
+    # The test helper does not implement tag writes or imitate Masstagger.
+    $report=$source+'.metadata-isolation-probe.txt'
+    if(Test-Path -LiteralPath $report){throw 'Refusing stale physical Masstagger probe report'}
+    $launcher=Start-Process -FilePath $exepath -WorkingDirectory $Workdir -PassThru -ArgumentList @('/metadata-isolation-probe-run-masstagger-physical',('"' + $source + '"'))
     if(-not $launcher.WaitForExit(25000)){
-        throw 'Original foobar context_command launcher did not terminate'
+        throw 'Existing physical-context SDK probe launcher did not terminate'
     }
     if($launcher.ExitCode -ne 0){
-        throw 'Original foobar context_command launcher failed'
+        throw 'Existing physical-context SDK probe launcher failed'
     }
     for($attempt=0;$attempt -lt 100;$attempt++){
         $dialog=[OriginalMasstaggerUiDiscovery]::FindMasstagger($FoobarPid)
@@ -156,6 +162,54 @@ try{
     $controls=[OriginalMasstaggerUiDiscovery]::Controls($dialog,$FoobarPid)
     Write-Host ('MASSTAGGER_REAL_UI_CONTROL_COUNT=' + $controls.Count)
     foreach($line in $controls){Write-Host ('MASSTAGGER_REAL_UI_CONTROL=' + $line)}
+    # Independent on-disk report from the actual foobar SDK context-menu
+    # command execution: do not accept a similarly titled unrelated dialog.
+    for($attempt=0;$attempt -lt 50 -and -not (Test-Path -LiteralPath $report);$attempt++){
+        Start-Sleep -Milliseconds 150
+    }
+    if(-not (Test-Path -LiteralPath $report)){
+        throw 'Real Masstagger dialog opened but SDK command report was not completed'
+    }
+    $reportText=Get-Content -LiteralPath $report -Raw
+    if($reportText -notmatch '(?m)^mapping_target_count=1\s*    Write-Host 'MASSTAGGER_EMBEDDED_CUE_PHYSICAL_NON_NOOP=PENDING_REAL_UI_ACTION'
+}finally{
+    if($dialog -ne [IntPtr]::Zero){
+        [OriginalMasstaggerUiDiscovery]::Close($dialog,$FoobarPid)
+        Start-Sleep -Milliseconds 250
+    }
+    if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $before){
+        throw 'Read-only Masstagger UI discovery unexpectedly modified embedded Cue MP3'
+    }
+    Write-Host 'MASSTAGGER_READ_ONLY_UI_DISCOVERY_MP3_BYTE_EXACT=PASS'
+}
+ -or
+       $reportText -notmatch '(?m)^mapping_rejected_count=0\s*    Write-Host 'MASSTAGGER_EMBEDDED_CUE_PHYSICAL_NON_NOOP=PENDING_REAL_UI_ACTION'
+}finally{
+    if($dialog -ne [IntPtr]::Zero){
+        [OriginalMasstaggerUiDiscovery]::Close($dialog,$FoobarPid)
+        Start-Sleep -Milliseconds 250
+    }
+    if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $before){
+        throw 'Read-only Masstagger UI discovery unexpectedly modified embedded Cue MP3'
+    }
+    Write-Host 'MASSTAGGER_READ_ONLY_UI_DISCOVERY_MP3_BYTE_EXACT=PASS'
+}
+ -or
+       $reportText -notmatch '(?m)^context_command_executed=Manage scripts\s*    Write-Host 'MASSTAGGER_EMBEDDED_CUE_PHYSICAL_NON_NOOP=PENDING_REAL_UI_ACTION'
+}finally{
+    if($dialog -ne [IntPtr]::Zero){
+        [OriginalMasstaggerUiDiscovery]::Close($dialog,$FoobarPid)
+        Start-Sleep -Milliseconds 250
+    }
+    if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $before){
+        throw 'Read-only Masstagger UI discovery unexpectedly modified embedded Cue MP3'
+    }
+    Write-Host 'MASSTAGGER_READ_ONLY_UI_DISCOVERY_MP3_BYTE_EXACT=PASS'
+}
+){
+        throw 'Original Masstagger physical mapped command not proven by SDK context tree'
+    }
+    Write-Host 'MASSTAGGER_REAL_PHYSICAL_CONTEXT_SDK_COMMAND=PASS'
     Write-Host 'MASSTAGGER_EMBEDDED_CUE_GENUINE_MANAGE_SCRIPTS_UI=PASS_OPENED_READ_ONLY'
     Write-Host 'MASSTAGGER_EMBEDDED_CUE_PHYSICAL_NON_NOOP=PENDING_REAL_UI_ACTION'
 }finally{
