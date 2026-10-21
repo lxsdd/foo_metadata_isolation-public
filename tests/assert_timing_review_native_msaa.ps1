@@ -85,19 +85,23 @@ $ownerPid=[uint32]$FoobarPid
 Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_MSAA_BUTTON_NAMES_AND_ROLES=PASS'
 $commitId=[MetadataIsolationReviewMsaa]::ButtonId($CommitHwnd)
 $discardId=[MetadataIsolationReviewMsaa]::ButtonId($DiscardHwnd)
-if($commitId -ne 0x2001 -or $discardId -ne 0x2002){
-  throw 'Native TaskDialog did not retain disjoint custom Commit/Discard action IDs'
+# TaskDialog native child HWND IDs can differ from pButtons[].nButtonID:
+# their displayed actions must be distinguished by independently MSAA
+# verified HWND/caption pairs, not by assuming that IDOK=Commit.
+Write-Host ("PRODUCTION_VIRTUAL_TIMING_REVIEW_NATIVE_BUTTON_IDS=commit:{0};discard:{1}" -f $commitId,$discardId)
+if($commitId -le 0 -or $discardId -le 0 -or $commitId -eq $discardId){
+  throw 'Native review controls do not have distinct identifiable button HWNDs'
 }
-Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DISTINCT_ACTION_IDS=PASS'
+Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DISTINCT_NATIVE_BUTTONS=PASS'
 $default=[MetadataIsolationReviewMsaa]::DefaultButton($ReviewHwnd,$ownerPid)
+Write-Host ("PRODUCTION_VIRTUAL_TIMING_REVIEW_NATIVE_DEFAULT_ID={0}" -f $default)
 if($default -eq $commitId){
-  throw 'Unsafe default: custom Commit action selected as TaskDialog native default'
+  throw 'Unsafe default: the actual visible Commit HWND is selected as default'
 }
 if($default -eq $discardId){
   Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DEFAULT_DISCARD=PASS'
 }else{
-  # Windows TaskDialog can report a generic internal IDOK as its native
-  # dialog default regardless of nDefaultButton and custom buttons.
-  # IDOK is NOT our custom Commit action: application fails closed.
-  Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_GENERIC_DEFAULT_NON_COMMIT=PASS'
+  # A non-button / internal TaskDialog ID is not positive evidence of
+  # the safe default, even when application commit selection is isolated.
+  Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DEFAULT_DISCARD=PENDING_NATIVE_ID_UNMAPPED'
 }
