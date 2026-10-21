@@ -42,6 +42,13 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           & ./validate_project.ps1
+          # SDK 2026-10-01 helper project newly includes atlapp.h; the
+          # separately redistributable existing WTL headers are not inside SDK.
+          $wtl = Join-Path (Get-Location) 'wtl/Include'
+          if (-not (Test-Path -LiteralPath (Join-Path $wtl 'atlapp.h'))) {
+            throw 'Pinned WTL header missing: atlapp.h'
+          }
+          $env:CL = '/I"' + $wtl + '" ' + $env:CL
           foreach ($platform in @('Win32','x64')) {
             & msbuild component.sln /t:Build /p:Configuration=Release "/p:Platform=$platform" /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
             if ($LASTEXITCODE -ne 0) { throw "SDK_2026_10_01_NATIVE_$platform=FAIL" }
