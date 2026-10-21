@@ -220,6 +220,30 @@ try{
             $errorDialog=[OriginalMasstaggerUiDiscovery]::FindExactTitle($FoobarPid,$name)
             if($errorDialog -ne [IntPtr]::Zero){
                 $labels=[OriginalMasstaggerUiDiscovery]::Controls($errorDialog,$FoobarPid)
+                # Windows 11 TaskDialogs can be hosted UIA rather than
+                # Win32 Static children. Log ONLY bounded generic text from
+                # synthetic disposable host; omit paths, slashes and edits.
+                try {
+                    Add-Type -AssemblyName UIAutomationClient
+                    $element=[System.Windows.Automation.AutomationElement]::FromHandle($errorDialog)
+                    if($null -ne $element){
+                        $desc=$element.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+                            [System.Windows.Automation.Condition]::TrueCondition)
+                        for($ui=0;$ui -lt [Math]::Min(25,$desc.Count);$ui++){
+                            $entry=$desc.Item($ui)
+                            $typ=$entry.Current.ControlType.ProgrammaticName
+                            $txt=$entry.Current.Name
+                            if($typ -in @('ControlType.Text','ControlType.Button') -and
+                               -not [string]::IsNullOrWhiteSpace($txt) -and
+                               $txt.Length -le 140 -and
+                               $txt -match '^[A-Za-z0-9 .,!?()_-]+$'){
+                                Write-Host ('MASSTAGGER_DISPOSABLE_HOST_UIA_ERROR=' + $name + ';' + $typ + ';' + $txt)
+                            }
+                        }
+                    }
+                }catch{
+                    Write-Host ('MASSTAGGER_DISPOSABLE_HOST_UIA_ERROR=PROVIDER_UNAVAILABLE_' + $_.Exception.GetType().Name)
+                }
                 foreach($entry in $labels){
                     if($entry -match '^(Static|Button):'){
                         Write-Host ('MASSTAGGER_HOST_DIALOG=' + $name + ';' + $entry)
