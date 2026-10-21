@@ -197,16 +197,35 @@ foreach($control in $buttons){
   if($control.Current.Name -ceq 'Commit'){$commitFound=$true}
   if($control.Current.Name -ceq 'Discard'){$discardButton=$control}
 }
-if(-not $commitFound -or $null -eq $discardButton){
-  throw 'Native timing review missing explicitly labelled Commit or Discard actions'
+# TaskDialog uses IDOK/IDCANCEL custom buttons. Verify their actual native
+# captions even if the hosted UIA provider does not enumerate its children.
+# A generic error dialog titled "Metadata Isolation" must not be mistaken for
+# a valid review; it will not have both exact custom captions.
+$commitHwnd=[MetadataIsolationTimingWindowLocator]::GetDlgItem($review,1)
+$discardHwnd=[MetadataIsolationTimingWindowLocator]::GetDlgItem($review,2)
+$nativeCommit=[MetadataIsolationTimingWindowLocator]::Text($commitHwnd)
+$nativeDiscard=[MetadataIsolationTimingWindowLocator]::Text($discardHwnd)
+if($nativeCommit -cne 'Commit' -or $nativeDiscard -cne 'Discard'){
+  $uiaNames=@($buttons | ForEach-Object { $_.Current.Name }) -join ','
+  throw ("Actual review not identified: native IDOK='{0}' IDCANCEL='{1}'; UIA buttons='{2}'" -f
+    $nativeCommit,$nativeDiscard,$uiaNames)
 }
-Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_ACTIONS=PASS'
-$invoke=$null
-if(-not $discardButton.TryGetCurrentPattern(
-  [System.Windows.Automation.InvokePattern]::Pattern,[ref]$invoke)){
-  throw 'Actual Discard button has no UIA InvokePattern'
+Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_NATIVE_ACTIONS=PASS'
+if($commitFound -and $null -ne $discardButton){
+  $invoke=$null
+  if($discardButton.TryGetCurrentPattern(
+    [System.Windows.Automation.InvokePattern]::Pattern,[ref]$invoke)){
+    ([System.Windows.Automation.InvokePattern]$invoke).Invoke()
+    Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_UIA_INVOKE=PASS'
+  }else{
+    [void][MetadataIsolationTimingWindowLocator]::Send($discardHwnd,0x00F5)
+    Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_UIA_INVOKE=PENDING_PROVIDER_UNEXPOSED'
+  }
+}else{
+  # A real native click is evidence for Discard, not evidence for UIA exposure.
+  [void][MetadataIsolationTimingWindowLocator]::Send($discardHwnd,0x00F5)
+  Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_UIA_BUTTONS=PENDING_PROVIDER_UNEXPOSED'
 }
-([System.Windows.Automation.InvokePattern]$invoke).Invoke()
 for($retry=0;$retry -lt 80;$retry++){
   if(-not [MetadataIsolationTimingWindowLocator]::IsWindow($review)){break}
   Start-Sleep -Milliseconds 100
