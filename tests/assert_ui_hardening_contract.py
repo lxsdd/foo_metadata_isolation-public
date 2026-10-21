@@ -71,6 +71,21 @@ ids = re.findall(r"^#define\s+(IDC_[A-Z0-9_]+)\s+(\d+)$", RESOURCE_H, re.MULTILI
 numbers = [number for _, number in ids]
 assert len(numbers) == len(set(numbers))
 
+# A live Win32/x64 TaskDialog exposed IDOK/Commit as its native default
+# even when the SDK nDefaultButton was set to IDCANCEL. Always put the
+# non-writing Discard button first as a safe fallback and keep the explicit
+# default IDCANCEL. Never allow Commit to be the first custom action.
+review = SESSION[SESSION.index("bool show_commit_dialog("):]
+review = review[:review.index("struct timing_dialog_state")]
+assert review.index('{ button_discard, L"Discard" }') < review.index('{ button_commit, L"Commit" }')
+assert "constexpr int button_commit = 0x2001;" in review
+assert "constexpr int button_discard = 0x2002;" in review
+assert "config.nDefaultButton = button_discard;" in review
+assert "int selected = button_discard;" in review
+assert "TDF_ALLOW_DIALOG_CANCELLATION" in review
+assert "return selected == button_commit;" in review
+assert "return selected == IDOK;" not in review
+
 # Do not advertise the not-yet-universal automatic-preview/completion model.
 assert "Always show change preview" not in RESOURCE
 assert "Apply safe changes automatically" not in RESOURCE
