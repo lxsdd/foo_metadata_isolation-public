@@ -107,6 +107,32 @@ public static class OriginalMasstaggerUiDiscovery {
     },IntPtr.Zero);
     return result.ToArray();
   }
+  // Never sweep unrelated windows: caller has verified an Actions-only
+  // disposable executable, PID, worktree, and synthetic MP3 before this call.
+  // These exact dialog titles were independently observed after the real
+  // Masstagger CLI on that same temporary host, before subsequent CLI probes.
+  public static string[] DismissKnownPreRoutingModals(int pid){
+    var handles=new List<IntPtr>();
+    var titles=new List<string>();
+    EnumWindows((h,ignored)=>{
+      uint owner;GetWindowThreadProcessId(h,out owner);
+      if(owner!=(uint)pid || !IsWindowVisible(h))return true;
+      var title=Label(h);
+      if(String.Equals(title,"Playback error",StringComparison.Ordinal) ||
+         String.Equals(title,"Error",StringComparison.Ordinal) ||
+         String.Equals(title,"Metadata Isolation: write blocked",StringComparison.Ordinal)){
+        handles.Add(h);titles.Add(title);
+      }
+      return true;
+    },IntPtr.Zero);
+    if(handles.Count>8)throw new InvalidOperationException("Too many disposable pre-routing modals");
+    for(int i=0;i<handles.Count;i++){
+      uint owner;GetWindowThreadProcessId(handles[i],out owner);
+      if(owner!=(uint)pid || !PostMessage(handles[i],0x0010,IntPtr.Zero,IntPtr.Zero))
+        throw new InvalidOperationException("Disposable pre-routing modal cannot be closed");
+    }
+    return titles.ToArray();
+  }
   public static void Close(IntPtr hwnd,int pid){
     uint owner;GetWindowThreadProcessId(hwnd,out owner);
     if(owner!=(uint)pid)throw new InvalidOperationException("Refusing other-process window close");
@@ -135,6 +161,23 @@ try{
             throw 'Disposable initial foobar Quick Appearance modal cannot be safely dismissed'
         }
         Write-Host 'MASSTAGGER_DISPOSABLE_HOST_FIRST_RUN_MODAL_DISMISSED=PASS'
+    }
+    # Real original Masstagger's preceding Cue CLI no-write path can leave
+    # multiple modal notifications open. This host-specific diagnostic closes
+    # ONLY their exact observed titles in the verified disposable process,
+    # without disabling the guard, touching user profiles or declaring a
+    # positive Masstagger physical commit. Absence of subsequent dispatch
+    # remains an explicit PENDING/FAIL rather than a false PASS.
+    $cleared=[OriginalMasstaggerUiDiscovery]::DismissKnownPreRoutingModals($FoobarPid)
+    Write-Host ('MASSTAGGER_DISPOSABLE_PRE_ROUTING_MODALS_DISMISSED=' + $cleared.Count)
+    foreach($title in $cleared){Write-Host ('MASSTAGGER_DISPOSABLE_DISMISSED_MODAL=' + $title)}
+    if($cleared.Count -gt 0){Start-Sleep -Milliseconds 900}
+    $remaining=@([OriginalMasstaggerUiDiscovery]::WindowTitles($FoobarPid) | Where-Object {
+        $_ -ceq 'Playback error' -or $_ -ceq 'Error' -or
+        $_ -ceq 'Metadata Isolation: write blocked'
+    })
+    if($remaining.Count -gt 0){
+        throw 'Pre-routing modal notification(s) remain after PID-scoped diagnostic close'
     }
     # First verify that genuine external foobar CLI dispatch reaches the
     # existing read-only in-component inventory probe on this synthetic CUE.
