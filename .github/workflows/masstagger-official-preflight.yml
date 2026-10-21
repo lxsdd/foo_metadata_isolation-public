@@ -1,0 +1,27 @@
+name: Official Masstagger 1.9.3 package preflight (source-only)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/masstagger-official-preflight.yml'
+      - 'tests/masstagger_official_package_preflight.ps1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  official-package-preflight:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Verify original official Masstagger source package without executing a DLL
+        shell: pwsh
+        run: |
+          ./tests/masstagger_official_package_preflight.ps1
+      # No components installed; no user presets/tokens; no Actions artifacts,
+      # caches, SDK redistribution, public DLLs or releases.
