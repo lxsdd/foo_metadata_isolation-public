@@ -44,6 +44,18 @@ jobs:
           }
           "needs_build=$($needsBuild.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           if (-not $needsBuild) { Write-Host 'Documentation-only change; required check passes without Windows compilation.' }
+      - name: Checkout immutable owner foobar SDK 2026-10-01 source
+        if: steps.changes.outputs.needs_build == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/foobar2000_component_template
+          ref: 31a35947a7527826c2199491692802e3ce3d8bd7
+          path: external/sdk-template
+          persist-credentials: false
+      - name: Replace obsolete vendored SDK only in ephemeral CI workspace
+        if: steps.changes.outputs.needs_build == 'true'
+        shell: pwsh
+        run: ./ci/test-latest-sdk.ps1
       - uses: microsoft/setup-msbuild@v2
         if: steps.changes.outputs.needs_build == 'true'
       - name: Validate repository and build both architectures
