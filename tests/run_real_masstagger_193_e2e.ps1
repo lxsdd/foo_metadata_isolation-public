@@ -117,6 +117,13 @@ try {
     # This is a non-no-op real third-party action, NOT our own write probe.
     # The synthetic file has NO embedded Cue; a physical COMM addition is safe
     # and proves the independent Masstagger writer really executed.
+    # The real Windows host can briefly lock the file during its write.
+    # Unreadable polling samples never qualify as a successful commit;
+    # the independent postimage oracle must still open and verify it.
+    function Get-TestMediaSha([string]$path) {
+        try { return (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash }
+        catch { return $null }
+    }
     $token='MI_SYNTHETIC_MASSTAGGER_193'
     $launch=Start-Process -FilePath $exe -WorkingDirectory $portable -ArgumentList @("/tag:comment=$token",('"' + $plain + '"')) -PassThru
     if(-not $launch.WaitForExit(25000)){throw 'Actual Masstagger CLI launcher did not terminate'}
@@ -126,7 +133,8 @@ try {
         Start-Sleep -Milliseconds 200
         $process.Refresh()
         if($process.HasExited){throw 'Host crashed during Masstagger real tag-write'}
-        if((Get-FileHash -LiteralPath $plain -Algorithm SHA256).Hash -cne $beforeHash){
+        $observed=Get-TestMediaSha $plain
+        if($null -ne $observed -and $observed -cne $beforeHash){
             $changed=$true
             break
         }
@@ -134,6 +142,7 @@ try {
     if(-not $changed){
         throw 'MASSTAGGER_REAL_TAG_WRITE_NOT_OBSERVED: CLI may be unsupported or not dispatched; do not claim PASS'
     }
+    Start-Sleep -Milliseconds 600
     & python tests/assert_masstagger_plain_tag_write.py $before $plain $token
     if($LASTEXITCODE -ne 0){throw 'Independent Masstagger frame, PRIV, audio integrity oracle failed'}
     Write-Host ("REAL_HOST_MASSTAGGER_193_PHYSICAL_NON_NOOP_TAG_WRITE_$Architecture=PASS")
@@ -161,7 +170,8 @@ try {
         Start-Sleep -Milliseconds 180
         $process.Refresh()
         if($process.HasExited){throw 'Two-component host crashed during embedded Cue tagging'}
-        if((Get-FileHash -LiteralPath $cueSource -Algorithm SHA256).Hash -cne $cueSha){
+        $observed=Get-TestMediaSha $cueSource
+        if($null -ne $observed -and $observed -cne $cueSha){
             $cueChanged=$true
             break
         }
@@ -169,6 +179,7 @@ try {
     if(-not $cueChanged){
         throw 'MASSTAGGER_EMBEDDED_CUE_REAL_WRITE_NOT_OBSERVED (safe reject possible, but positive user workflow NOT QUALIFIED)'
     }
+    Start-Sleep -Milliseconds 600
     & python tests/assert_masstagger_embedded_cue_physical.py $cueBefore $cueSource $cueExpectedComment
     if($LASTEXITCODE -ne 0){
         throw 'Actual Masstagger Cue physical-vs-virtual postimage oracle failed'
