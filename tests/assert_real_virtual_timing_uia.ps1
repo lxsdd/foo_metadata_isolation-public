@@ -269,6 +269,53 @@ if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $before){
 }
 Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DISCARD_BYTE_EXACT=PASS'
 
+# Third independent review, same exact disposable fixture: press actual
+# system Enter (not BM_CLICK/WM_COMMAND) while the genuine TaskDialog is the
+# foreground window. It MUST default to Discard and leave source byte-exact.
+# This is not a simulation of a component writer or a TaskDialog mock.
+if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $before){
+  throw 'Real native Enter test refuses already modified synthetic source'
+}
+$launched=Start-Process -FilePath $Executable -WorkingDirectory $Workdir -ArgumentList @(
+  '/metadata-isolation-probe-open-real-virtual-timing',('"' + $source + '"')) -PassThru
+$window=[IntPtr]::Zero
+for($retry=0;$retry -lt 100;$retry++){
+  $window=[MetadataIsolationTimingWindowLocator]::Find($FoobarPid,'Metadata Isolation - Virtual timing')
+  if($window -ne [IntPtr]::Zero){break}
+  Start-Sleep -Milliseconds 200
+}
+if($window -eq [IntPtr]::Zero){throw 'Native Enter test failed to open the real timing editor'}
+$editHwnd=[MetadataIsolationTimingWindowLocator]::GetDlgItem($window,1104)
+if([MetadataIsolationTimingWindowLocator]::TextByNativeMessage($editHwnd) -cne '00:00:30'){
+  throw 'Native Enter test timing preimage mismatch'
+}
+[MetadataIsolationTimingWindowLocator]::SetText($editHwnd,'00:00:35')
+if([MetadataIsolationTimingWindowLocator]::TextByNativeMessage($editHwnd) -cne '00:00:35'){
+  throw 'Native Enter test refused the changed timing value'
+}
+[MetadataIsolationTimingWindowLocator]::ClickAsync(
+  [MetadataIsolationTimingWindowLocator]::GetDlgItem($window,1))
+$review=[IntPtr]::Zero
+for($retry=0;$retry -lt 160;$retry++){
+  $review=[MetadataIsolationTimingWindowLocator]::Find($FoobarPid,'Metadata Isolation')
+  if($review -ne [IntPtr]::Zero){break}
+  Start-Sleep -Milliseconds 150
+}
+if($review -eq [IntPtr]::Zero){throw 'Native Enter test failed to reach a real Commit/Discard review'}
+$enterCommit=[MetadataIsolationTimingWindowLocator]::FindDescendantButton($review,'Commit')
+$enterDiscard=[MetadataIsolationTimingWindowLocator]::FindDescendantButton($review,'Discard')
+if($enterCommit -eq [IntPtr]::Zero -or $enterDiscard -eq [IntPtr]::Zero){
+  throw 'Native Enter test refuses a review without unique Commit and Discard'
+}
+if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $before){
+  throw 'Original changed before any native Enter keypress'
+}
+& ./tests/assert_real_timing_enter_safe.ps1 -FoobarPid $FoobarPid -ReviewHwnd $review -FixturePath $source -PreimageSha256 $before
+if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $before){
+  throw 'Native Enter unexpectedly changed the exact source MP3'
+}
+Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_REAL_ENTER_NO_COMMIT=PASS'
+
 # Positive production UI path: commit only to the same exact synthetic file.
 # The previous Cancel and Discard subtests must both have proved byte identity.
 # Do not use a diagnostic commit to manufacture acceptance for the native UI.

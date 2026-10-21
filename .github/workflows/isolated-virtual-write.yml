@@ -19,6 +19,7 @@ on:
       - 'tests/assert_real_audit_uia.ps1'
       - 'tests/assert_real_virtual_timing_uia.ps1'
       - 'tests/assert_timing_review_native_msaa.ps1'
+      - 'tests/assert_real_timing_enter_safe.ps1'
       - 'tests/assert_real_virtual_timing_ui_commit.py'
       - 'src/**'
       - 'component.sln'
