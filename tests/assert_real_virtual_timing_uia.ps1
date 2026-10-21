@@ -29,6 +29,21 @@ using System.Runtime.InteropServices;
 public static class MetadataIsolationTimingWindowLocator {
   public delegate bool Visitor(IntPtr window,IntPtr state);
   [DllImport("user32.dll")] public static extern bool EnumWindows(Visitor callback,IntPtr state);
+  [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr window,Visitor callback,IntPtr state);
+  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetClassNameW(IntPtr hwnd,StringBuilder text,int capacity);
+  public static IntPtr FindDescendantButton(IntPtr window,string caption) {
+    IntPtr match=IntPtr.Zero; int count=0;
+    EnumChildWindows(window,(hwnd,ignored)=>{
+      var cls=new StringBuilder(64);
+      GetClassNameW(hwnd,cls,cls.Capacity);
+      if(String.Equals(cls.ToString(),"Button",StringComparison.OrdinalIgnoreCase) &&
+         String.Equals(Text(hwnd),caption,StringComparison.Ordinal)){
+        match=hwnd; count++;
+      }
+      return true;
+    },IntPtr.Zero);
+    return count==1?match:IntPtr.Zero;
+  }
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd,out uint pid);
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr hwnd,StringBuilder text,int capacity);
   [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr hwnd,int id);
@@ -201,14 +216,56 @@ foreach($control in $buttons){
 # captions even if the hosted UIA provider does not enumerate its children.
 # A generic error dialog titled "Metadata Isolation" must not be mistaken for
 # a valid review; it will not have both exact custom captions.
-$commitHwnd=[MetadataIsolationTimingWindowLocator]::GetDlgItem($review,1)
-$discardHwnd=[MetadataIsolationTimingWindowLocator]::GetDlgItem($review,2)
+$commitHwnd=[MetadataIsolationTimingWindowLocator]::FindDescendantButton($review,'Commit')
+$discardHwnd=[MetadataIsolationTimingWindowLocator]::FindDescendantButton($review,'Discard')
+if($commitHwnd -eq [IntPtr]::Zero -or $discardHwnd -eq [IntPtr]::Zero){
+  # Log names only (never paths, contents, or user-controlled metadata).
+  $all=$reviewRoot.FindAll(
+    [System.Windows.Automation.TreeScope]::Descendants,
+    [System.Windows.Automation.Condition]::TrueCondition)
+  $summary=@(for($i=0;$i -lt [Math]::Min(50,$all.Count);$i++){
+    $item=$all.Item($i)
+    $name=$item.Current.Name
+    if($name -match '^(Commit|Discard|OK|Cancel|Close|Review virtual Cue timing change)
+Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_NATIVE_ACTIONS=PASS'
+if($commitFound -and $null -ne $discardButton){
+  $invoke=$null
+  if($discardButton.TryGetCurrentPattern(
+    [System.Windows.Automation.InvokePattern]::Pattern,[ref]$invoke)){
+    ([System.Windows.Automation.InvokePattern]$invoke).Invoke()
+    Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_UIA_INVOKE=PASS'
+  }else{
+    [void][MetadataIsolationTimingWindowLocator]::Send($discardHwnd,0x00F5)
+    Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_UIA_INVOKE=PENDING_PROVIDER_UNEXPOSED'
+  }
+}else{
+  # A real native click is evidence for Discard, not evidence for UIA exposure.
+  [void][MetadataIsolationTimingWindowLocator]::Send($discardHwnd,0x00F5)
+  Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_UIA_BUTTONS=PENDING_PROVIDER_UNEXPOSED'
+}
+for($retry=0;$retry -lt 80;$retry++){
+  if(-not [MetadataIsolationTimingWindowLocator]::IsWindow($review)){break}
+  Start-Sleep -Milliseconds 100
+}
+if([MetadataIsolationTimingWindowLocator]::IsWindow($review)){
+  throw 'Actual Discard command did not close the review'
+}
+if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $before){
+  throw 'Discarding actual Virtual timing preview modified source MP3'
+}
+Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DISCARD_BYTE_EXACT=PASS'
+
+){
+      $item.Current.ControlType.ProgrammaticName+':'+$name
+    }
+  }) -join ','
+  throw ("Actual review has no unique native Commit/Discard buttons; recognized UIA names='{0}'; native handles Commit={1}, Discard={2}" -f
+    $summary,$commitHwnd,$discardHwnd)
+}
 $nativeCommit=[MetadataIsolationTimingWindowLocator]::Text($commitHwnd)
 $nativeDiscard=[MetadataIsolationTimingWindowLocator]::Text($discardHwnd)
 if($nativeCommit -cne 'Commit' -or $nativeDiscard -cne 'Discard'){
-  $uiaNames=@($buttons | ForEach-Object { $_.Current.Name }) -join ','
-  throw ("Actual review not identified: native IDOK='{0}' IDCANCEL='{1}'; UIA buttons='{2}'" -f
-    $nativeCommit,$nativeDiscard,$uiaNames)
+  throw 'Native timing review labels changed between discovery and validation'
 }
 Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_NATIVE_ACTIONS=PASS'
 if($commitFound -and $null -ne $discardButton){
