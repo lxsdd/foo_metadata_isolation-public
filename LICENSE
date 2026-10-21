@@ -4,7 +4,7 @@ MIT License with "Commons Clause" License Condition v1.0
 This combined license applies only to the original foo_metadata_isolation
 project-owned code and documentation. Independently licensed third-party
 SDKs, libraries, tools, foobar2000 software and installers are NOT
-relicensed by this file. See docs/THIRD-PARTY-NOTICES-INVENTORY.md.
+relicensed by this file. See THIRD_PARTY_NOTICES.md.
 
 MIT License
 
