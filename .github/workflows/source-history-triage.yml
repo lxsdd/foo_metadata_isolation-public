@@ -58,17 +58,23 @@ jobs:
           repository: lxsdd/dev-infrastructure-public
           ref: 4a562946975b610651a0a4e71a422699a7a604d9
           persist-credentials: false
-      # The first real third-party Masstagger synthetic fixture introduced
-      # exactly one deterministic *non-secret* fixture string at an immutable
-      # historical commit. Inspect that original line before accepting its
-      # one exact redacted false-positive fingerprint. Never allowlist a
-      # generic rule, filename, branch or future source change.
-      - name: Check immutable historical Masstagger synthetic marker (not an actual credential)
+      # Inspect both exact, immutable historical source lines. The second
+      # false positive was introduced in the first review itself, because a
+      # literal reproduction of the synthetic marker triggers the same rule.
+      # Review by hashes only; never embed an API-key-like sample anew.
+      - name: Read exact original Masstagger test source to prove non-secret fixture
         uses: actions/checkout@v7
         with:
           repository: lxsdd/foo_metadata_isolation-public
           ref: f355c31a991fc802f6cf8983ef2a3380ddfbf898
-          path: .reviewed-masstagger-false-positive
+          path: .reviewed-original-masstagger
+          persist-credentials: false
+      - name: Read exact historical first-review commit to prove the second synthetic-only match
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/foo_metadata_isolation-public
+          ref: 7cd4fbf4ca7d08e38010e349eac5e12474f60882
+          path: .reviewed-first-security-review
           persist-credentials: false
       - name: Audit all reachable refs with SHA256 pinned Gitleaks
         env:
@@ -89,28 +95,53 @@ jobs:
               and a.get("completed") is True and a.get("included_pr_refs") is True
               and a.get("version")=="8.30.1"):
               raise SystemExit("GITLEAKS_GATE=FAIL missing/incomplete independent scan")
-          # Source-only review of one *immutable* previously committed
-          # synthetic constant. Gitleaks --redact=100 emits "REDACTED"
-          # (length 8) as the secret: its digest is not a credential hash.
-          historic=Path(".reviewed-masstagger-false-positive")
-          source=historic/"tests/run_real_masstagger_193_e2e.ps1"
-          commit=subprocess.check_output(["git","rev-parse","HEAD"],cwd=historic,text=True).strip()
-          historical_line="    $token='MI_SYNTHETIC_MASSTAGGER_193'"
-          verified=(commit=="f355c31a991fc802f6cf8983ef2a3380ddfbf898"
-             and source.is_file()
-             and source.read_text(encoding="utf-8").splitlines()[119]==historical_line)
-          fingerprint={"rule":"generic-api-key","path_hash":"39b056cbb3e8",
-              "line":120,"commit_prefix":"f355c31a991f",
-              "secret_digest":hashlib.sha256(b"REDACTED").hexdigest()[:12],
-              "secret_length":8,"test_file":False}
+          # Two source-only historical *false positives*: the original
+          # explicitly synthetic comment fixture, plus its first verbatim
+          # security-review quote. Validate the full original commit ID,
+          # Git checkout, pathname, exact line and SHA256 without embedding
+          # the flagged literal itself again.
+          reviewed=[
+              {
+                  "directory":".reviewed-original-masstagger",
+                  "commit":"f355c31a991fc802f6cf8983ef2a3380ddfbf898",
+                  "path":"tests/run_real_masstagger_193_e2e.ps1",
+                  "line":120,
+                  "source_line_sha":"02b0491c081bfa5c4823abab903c74db559be8920f249c2ebb9fe05c52a4b6fc",
+                  "redacted":{"rule":"generic-api-key","path_hash":"39b056cbb3e8",
+                      "line":120,"commit_prefix":"f355c31a991f","secret_digest":"b83c7778c23a",
+                      "secret_length":8,"test_file":False}
+              },
+              {
+                  "directory":".reviewed-first-security-review",
+                  "commit":"7cd4fbf4ca7d08e38010e349eac5e12474f60882",
+                  "path":".github/workflows/source-history-triage.yml",
+                  "line":98,
+                  "source_line_sha":"bfbaa31cf88103492c72287dc25b6a9db5e652b232b2e14ffeefd36088634fb8",
+                  "redacted":{"rule":"generic-api-key","path_hash":"d2c4a54734b6",
+                      "line":98,"commit_prefix":"7cd4fbf4ca7d","secret_digest":"b83c7778c23a",
+                      "secret_length":8,"test_file":False}
+              }
+          ]
+          def independently_valid(item):
+              root=Path(item["directory"])
+              commit=subprocess.check_output(["git","rev-parse","HEAD"],cwd=root,text=True).strip()
+              if commit!=item["commit"]:return False
+              path=root/item["path"]
+              if not path.is_file():return False
+              lines=path.read_text(encoding="utf-8").splitlines()
+              return (len(lines)>=item["line"] and hashlib.sha256(
+                  lines[item["line"]-1].encode("utf-8")).hexdigest()==item["source_line_sha"])
           findings=a.get("redacted_findings")
           if a.get("findings")==0 and a.get("rules")=={}:
-              print("GITLEAKS_GATE=PASS zero findings in reachable history")
-          elif (verified and a.get("findings")==1 and
-              a.get("rules")=={"generic-api-key":1} and
-              isinstance(findings,list) and findings==[fingerprint]):
-              print("GITLEAKS_GATE=PASS one exact immutable synthetic false positive reviewed; zero unresolved findings")
-              print("GITLEAKS_REVIEWED_HISTORICAL_SYNTHETIC_EXCEPTION=1")
+              print("GITLEAKS_GATE=PASS no redacted findings")
+          elif (a.get("findings")==len(reviewed) and
+                a.get("rules")=={"generic-api-key":len(reviewed)} and
+                isinstance(findings,list) and
+                sorted(findings,key=lambda x:x.get("commit_prefix",""))==
+                sorted([x["redacted"] for x in reviewed],key=lambda x:x["commit_prefix"]) and
+                all(independently_valid(x) for x in reviewed)):
+              print("GITLEAKS_GATE=PASS exactly two immutable synthetic non-credential lines reviewed; zero unresolved findings")
+              print("GITLEAKS_REVIEWED_IMMUTABLE_SYNTHETIC_EXCEPTIONS=2")
           else:
-              raise SystemExit("GITLEAKS_GATE=FAIL unreviewed historical secret finding")
+              raise SystemExit("GITLEAKS_GATE=FAIL unexpected or unreviewed historical secret finding")
           PY
