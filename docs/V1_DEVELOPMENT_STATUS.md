@@ -41,7 +41,7 @@ A fail-closed, mutation-tested tracked-file gate verifies the absence of committ
 
 ### Historical Git/secret audit — distinct from tracked-tree check
 
-The tracked source/no-user-media gate is **not** a full-history or secrets clearance. The separate `source-history-triage.yml` reads the existing immutable, source-only history and Gitleaks scanners from `lxsdd/dev-infrastructure-public@4a562946975b610651a0a4e71a422699a7a604d9`, scans public reachability including available PR refs, and emits redacted categories/counts only. It does not request secrets or credentials, upload artifacts, or approve redistributability. Successful tool execution means **SCAN COMPLETED**, not **ZERO FINDINGS**; evidence requires independent review of any findings and historical licensing. No full release sign-off is implied.
+The tracked source/no-user-media gate is **not** a full-history or secrets clearance. The separate `source-history-triage.yml` reads the existing immutable, source-only history and Gitleaks scanners from `lxsdd/dev-infrastructure-public@4a562946975b610651a0a4e71a422699a7a604d9`, scans public reachability including available PR refs, and emits redacted categories/counts only. It does not request secrets or credentials, upload artifacts, or approve redistributability. After the first scan, the workflow was hardened: it now **fails closed** unless all reachable blobs were read, PR refs were scanned, the sole binary matches are exactly the three pinned SDK libraries, and the independent pinned Gitleaks scan has zero findings. Unexpected historical material blocks qualification pending triage. This is still heuristic and not full legal clearance. No full release sign-off is implied.
 
 ## Remaining release gates — explicitly NOT PASS
 
