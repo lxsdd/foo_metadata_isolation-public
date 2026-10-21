@@ -4,7 +4,9 @@
 #include "ui_tooltips.h"
 #include "physical_targets.h"
 #include "physical_metadata_audit.h"
+#include "physical_metadata_audit_ui.h"
 #include "preferences.h"
+#include "write_guard.h"
 #include "virtual_edit_session.h"
 #include "ui_scaling.h"
 
@@ -27,6 +29,8 @@ enum class probe_mode {
     virtual_custom,
     virtual_nochange,
     virtual_all_titles,
+    direct_guard_virtual_title,
+    open_real_virtual_timing_dialog,
     chapterizer_title,
     physical_title,
     physical_all,
@@ -153,6 +157,7 @@ enum class probe_mode {
     projection_benchmark_inventory,
     physical_audit_classifier,
     logging_contract,
+    audit_internal_ui_state,
     logging_outcomes,
     logging_standard,
     logging_verbose,
@@ -201,6 +206,8 @@ bool parse_probe_mode(const char* token, probe_mode& mode) {
         { "/metadata-isolation-probe-custom", probe_mode::virtual_custom },
         { "/metadata-isolation-probe-nochange", probe_mode::virtual_nochange },
         { "/metadata-isolation-probe-all-titles", probe_mode::virtual_all_titles },
+        { "/metadata-isolation-probe-direct-guard-virtual-title", probe_mode::direct_guard_virtual_title },
+        { "/metadata-isolation-probe-open-real-virtual-timing", probe_mode::open_real_virtual_timing_dialog },
         { "/metadata-isolation-probe-chapterizer-title", probe_mode::chapterizer_title },
         { "/metadata-isolation-probe-physical-title", probe_mode::physical_title },
         { "/metadata-isolation-probe-physical-all", probe_mode::physical_all },
@@ -327,6 +334,7 @@ bool parse_probe_mode(const char* token, probe_mode& mode) {
         { "/metadata-isolation-probe-projection-benchmark-inventory", probe_mode::projection_benchmark_inventory },
         { "/metadata-isolation-probe-physical-audit-classifier", probe_mode::physical_audit_classifier },
         { "/metadata-isolation-probe-logging-contract", probe_mode::logging_contract },
+        { "/metadata-isolation-probe-audit-internal-ui-state", probe_mode::audit_internal_ui_state },
         { "/metadata-isolation-probe-logging-outcomes", probe_mode::logging_outcomes },
         { "/metadata-isolation-probe-logging-standard", probe_mode::logging_standard },
         { "/metadata-isolation-probe-logging-verbose", probe_mode::logging_verbose },
@@ -833,6 +841,48 @@ public:
         for (size_t index = 0; index < m_items.get_count(); ++index) {
             report << "handle_" << index << "_subsong="
                    << m_items[index]->get_subsong_index() << "\n";
+        }
+
+        if (m_mode == probe_mode::open_real_virtual_timing_dialog) {
+            // Built exclusively into the disposable CI probe component.
+            // Open the real production editor only for a uniquely marked
+            // synthetic three-track source. No simulated postimage or write.
+            try {
+                static constexpr char fixture_marker[] =
+                    "MI-DISPOSABLE-FOOBAR-TIMING-UI-V1";
+                pfc::string_formatter marker_path;
+                marker_path << path << ".metadata-isolation-timing-ui-fixture.txt";
+                file::ptr marker;
+                filesystem::g_open_read(marker, marker_path, fb2k::noAbort);
+                if (marker->get_size_ex(fb2k::noAbort) != sizeof(fixture_marker) - 1) {
+                    throw pfc::exception("Timing UI requires exact disposable fixture marker");
+                }
+                char actual[sizeof(fixture_marker)] = {};
+                marker->read_object(actual, sizeof(fixture_marker) - 1, fb2k::noAbort);
+                if (std::memcmp(actual, fixture_marker, sizeof(fixture_marker) - 1) != 0 ||
+                    pfc::stricmp_ascii(pfc::string_extension(path), "mp3") != 0 ||
+                    !cfg_enabled) {
+                    throw pfc::exception("Timing UI probe refuses unmarked or unprotected source");
+                }
+                input_info_reader::ptr source;
+                input_entry::g_open_for_info_read(source, nullptr, path, fb2k::noAbort);
+                if (source->get_subsong_count() != 3 || source->get_subsong(1) != 2) {
+                    throw pfc::exception("Timing UI fixture is not the expected three-track Cue");
+                }
+                file_info_impl virtual_info;
+                source->get_info(2, virtual_info, fb2k::noAbort);
+                const char* title = virtual_info.meta_get("TITLE", 0);
+                if (title == nullptr || std::strcmp(title, "Virtual Original Two") != 0) {
+                    throw pfc::exception("Timing UI fixture virtual preimage is unexpected");
+                }
+                source.release();
+                metadb_handle_list selected;
+                selected.add_item(metadb::get()->handle_create(path, 2));
+                edit_virtual_timing(selected);
+            } catch (const std::exception& error) {
+                FB2K_console_formatter() << "Metadata Isolation disposable timing UI probe rejected: " << error;
+            }
+            return;
         }
 
         if (m_mode == probe_mode::physical_audit_classifier) {
@@ -1364,6 +1414,9 @@ public:
                     report << "structured_log=" << line.c_str() << "\n";
                 }
                 report << "write_result=logging_outcomes_complete\n";
+            } else if (m_mode == probe_mode::audit_internal_ui_state) {
+                read_audit_internal_state_for_test(report);
+                report << "write_result=audit_internal_state_readonly\n";
             } else if (m_mode == probe_mode::logging_contract) {
                 const char* unicode_value =
                     "Gr" "\xC3\xBC" "\xC3\x9F" "e-"
@@ -1416,6 +1469,18 @@ public:
                        << (tooltip.texts_match ? "true" : "false") << "\n"
                        << "tooltip_distinct_mapping="
                        << (tooltip.distinct_mapping ? "true" : "false") << "\n"
+                       << "tooltip_parent_visible="
+                       << (tooltip.parent_visible ? "true" : "false") << "\n"
+                       << "tooltip_parent_foreground="
+                       << (tooltip.parent_foreground ? "true" : "false") << "\n"
+                       << "tooltip_cursor_inside="
+                       << (tooltip.cursor_inside ? "true" : "false") << "\n"
+                       << "tooltip_mouse_event_sent="
+                       << (tooltip.mouse_event_sent ? "true" : "false") << "\n"
+                       << "tooltip_current_tool_present="
+                       << (tooltip.current_tool_present ? "true" : "false") << "\n"
+                       << "tooltip_forced_popup_visible="
+                       << (tooltip.forced_popup_visible ? "true" : "false") << "\n"
                        << "tooltip_hover_appeared="
                        << (tooltip.hover_appeared ? "true" : "false") << "\n"
                        << "tooltip_hover_dismissed="
@@ -1771,6 +1836,95 @@ public:
                     append_info_inventory(report, phase.c_str(), 0, postimage);
                 }
                 report << "write_result=physical_batch_committed\n";
+            } else if (m_mode == probe_mode::direct_guard_virtual_title) {
+                // Test-only command, compiled solely with EnableTestProbes=true.
+                // Never use on anything except a create-only disposable runner fixture.
+                // This deliberately exercises the native, unsafe host input writer
+                // without the isolated-shadow pathway; the Write Guard must veto it.
+                // Independent create-only test marker lives beside the exact source.
+                // A path-name heuristic is not sufficient because foobar may
+                // canonicalize or URL-encode paths before creating a handle.
+                static constexpr char fixture_marker[] = "MI-DISPOSABLE-FOOBAR-GUARD-V1";
+                pfc::string_formatter marker_path;
+                marker_path << path << ".metadata-isolation-guard-fixture.txt";
+                bool disposable_fixture = false;
+                try {
+                    file::ptr marker;
+                    filesystem::g_open_read(marker, marker_path, fb2k::noAbort);
+                    if (marker->get_size_ex(fb2k::noAbort) == sizeof(fixture_marker) - 1) {
+                        char readback[sizeof(fixture_marker)] = {};
+                        marker->read_object(readback, sizeof(fixture_marker) - 1, fb2k::noAbort);
+                        disposable_fixture =
+                            std::memcmp(readback, fixture_marker, sizeof(fixture_marker) - 1) == 0;
+                    }
+                } catch (const std::exception&) {
+                    disposable_fixture = false;
+                }
+                const char* extension = pfc::string_extension(path);
+                const bool supported_mp3 = pfc::stricmp_ascii(extension, "mp3") == 0;
+                const bool guard_enabled = cfg_enabled;
+                report << "direct_guard_disposable_fixture="
+                       << (disposable_fixture ? "true" : "false") << "\n"
+                       << "direct_guard_mp3_extension="
+                       << (supported_mp3 ? "true" : "false") << "\n"
+                       << "direct_guard_cfg_enabled="
+                       << (guard_enabled ? "true" : "false") << "\n";
+                if (!disposable_fixture || !supported_mp3 || !guard_enabled) {
+                    throw pfc::exception("Direct Guard probe preconditions failed; refusing unsafe write");
+                }
+                input_info_reader::ptr inventory;
+                input_entry::g_open_for_info_read(inventory, nullptr, path, fb2k::noAbort);
+                bool track_one_found = false;
+                for (unsigned i = 0; i < inventory->get_subsong_count(); ++i) {
+                    if (inventory->get_subsong(i) == 1) track_one_found = true;
+                }
+                if (!track_one_found) throw pfc::exception("Disposable source has no embedded Cue subsong 1");
+                file_info_impl pre;
+                inventory->get_info(1, pre, fb2k::noAbort);
+                pfc::string8 expected(pre.meta_get("TITLE", 0));
+                if (expected != "Virtual Original One") {
+                    throw pfc::exception("Unexpected virtual preimage in direct Guard probe");
+                }
+                inventory.release();
+
+                const char* attempted = "Direct Unsafe Probe MUST NOT COMMIT";
+                report << "direct_guard_subsong=1\n"
+                       << "direct_guard_title_before=" << expected << "\n"
+                       << "direct_guard_title_attempted=" << attempted << "\n"
+                       << "direct_guard_protection_before="
+                       << protection_status_name(get_protection_status()) << "\n";
+                auto lock = file_lock_manager::get()->acquire_write(path, fb2k::noAbort);
+                try {
+                    input_info_writer::ptr writer;
+                    input_entry::g_open_for_info_write_timeout(
+                        writer, nullptr, path, fb2k::noAbort, 1.0);
+                    file_info_impl updated;
+                    writer->get_info(1, updated, fb2k::noAbort);
+                    updated.meta_set("TITLE", attempted);
+                    report << "direct_guard_write_attempted=true\n";
+                    writer->set_info(1, updated, fb2k::noAbort);
+                    writer->commit(fb2k::noAbort);
+                    report << "direct_guard_commit_returned=true\n";
+                    writer.release();
+                } catch (const std::exception& error) {
+                    // An exception is a valid guard outcome, but never an excuse
+                    // to declare PASS without checking the source byte-for-byte.
+                    report << "direct_guard_commit_returned=false\n"
+                           << "direct_guard_writer_exception=" << error.what() << "\n";
+                }
+                lock.release();
+                input_info_reader::ptr reloaded;
+                input_entry::g_open_for_info_read(reloaded, nullptr, path, fb2k::noAbort);
+                file_info_impl after;
+                reloaded->get_info(1, after, fb2k::noAbort);
+                const char* title_after = after.meta_get("TITLE", 0);
+                report << "direct_guard_title_after="
+                       << (title_after == nullptr ? "<missing>" : title_after) << "\n"
+                       << "direct_guard_protection_after="
+                       << protection_status_name(get_protection_status()) << "\n"
+                       << "write_result="
+                       << (title_after != nullptr && expected == title_after ?
+                           "guard_preserved" : "unsafe_mutation") << "\n";
             } else if (m_mode == probe_mode::physical_title ||
                        m_mode == probe_mode::physical_all ||
                        m_mode == probe_mode::physical_album_artist ||
