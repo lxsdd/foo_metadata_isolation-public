@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory)][int]$FoobarPid,
     [Parameter(Mandatory)][string]$Executable,
     [Parameter(Mandatory)][string]$Workdir,
-    [Parameter(Mandatory)][string]$FixturePath
+    [Parameter(Mandatory)][string]$FixturePath,
+    [Parameter(Mandatory)][string]$PlainFixturePath
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -14,11 +15,16 @@ if($env:GITHUB_ACTIONS -cne 'true' -or -not $env:RUNNER_TEMP){
 }
 $runner=[IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')+'\'
 $source=[IO.Path]::GetFullPath($FixturePath)
+$plainSource=[IO.Path]::GetFullPath($PlainFixturePath)
 $exepath=[IO.Path]::GetFullPath($Executable)
 if(-not $source.StartsWith($runner,[StringComparison]::OrdinalIgnoreCase) -or
    -not $exepath.StartsWith($runner,[StringComparison]::OrdinalIgnoreCase) -or
    [IO.Path]::GetFileName($source) -cne 'track-01.mp3' -or
-   [IO.Path]::GetFileName($exepath) -cne 'foobar2000.exe'){
+   [IO.Path]::GetFileName($exepath) -cne 'foobar2000.exe' -or
+   -not $plainSource.StartsWith($runner,[StringComparison]::OrdinalIgnoreCase) -or
+   [IO.Path]::GetFileName($plainSource) -cne 'track-01.mp3' -or
+   [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($plainSource)) -cne 'media' -or
+   $plainSource -ceq $source){
     throw 'Refusing original Masstagger UI discovery on non-disposable paths'
 }
 $hostProcess=Get-Process -Id $FoobarPid -ErrorAction Stop
@@ -27,6 +33,7 @@ if($hostProcess.ProcessName -cne 'foobar2000' -or
     throw 'Original Masstagger UI diagnostic host identity mismatch'
 }
 $before=(Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+$plainBefore=(Get-FileHash -LiteralPath $plainSource -Algorithm SHA256).Hash
 
 Add-Type -TypeDefinition @'
 using System;
@@ -179,6 +186,33 @@ try{
     if($remaining.Count -gt 0){
         throw 'Pre-routing modal notification(s) remain after PID-scoped diagnostic close'
     }
+    # Independent read-only inventory of a normal synthetic MP3 in the
+    # same genuine co-loaded host before any original Masstagger /tag CLI.
+    # This isolates systemic CLI dispatch failure from embedded Cue parsing.
+    $plainReport=$plainSource+'.metadata-isolation-probe.txt'
+    if(Test-Path -LiteralPath $plainReport){throw 'Refusing stale plain diagnostic report'}
+    $plainLauncher=Start-Process -FilePath $exepath -WorkingDirectory $Workdir -PassThru -ArgumentList @('/metadata-isolation-probe-embedded-cue-inventory',('"' + $plainSource + '"'))
+    if(-not $plainLauncher.WaitForExit(25000) -or $plainLauncher.ExitCode -ne 0){
+        throw 'Real foobar plain inventory launcher failed'
+    }
+    for($attempt=0;$attempt -lt 55 -and -not (Test-Path -LiteralPath $plainReport);$attempt++){
+        Start-Sleep -Milliseconds 120
+    }
+    if((Get-FileHash -LiteralPath $plainSource -Algorithm SHA256).Hash -cne $plainBefore){
+        throw 'Plain inventory unexpectedly modified synthetic MP3'
+    }
+    if(-not (Test-Path -LiteralPath $plainReport)){
+        Write-Host ('MASSTAGGER_COLOADED_PLAIN_INVENTORY_CLI_WINDOWS=' +
+            ([OriginalMasstaggerUiDiscovery]::WindowTitles($FoobarPid) -join ';'))
+        Write-Host 'MASSTAGGER_COLOADED_PLAIN_INVENTORY_CLI=PENDING_EXTERNAL_DISPATCH'
+        throw 'BLOCKED_PRE_ROUTING: external foobar CLI did not run synthetic Cue inventory'
+    }
+    $plainInventory=Get-Content -LiteralPath $plainReport -Raw
+    if($plainInventory -notmatch '(?m)^inventory_subsong_count=1\s*$'){
+        throw 'Unexpected number of ordinary MP3 subsongs from genuine host'
+    }
+    Remove-Item -LiteralPath $plainReport -Force
+    Write-Host 'MASSTAGGER_COLOADED_PLAIN_INVENTORY_CLI=PASS'
     # First verify that genuine external foobar CLI dispatch reaches the
     # existing read-only in-component inventory probe on this synthetic CUE.
     $report=$source+'.metadata-isolation-probe.txt'
@@ -344,6 +378,9 @@ try{
     }
     if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $before){
         throw 'Read-only Masstagger UI discovery unexpectedly modified embedded Cue MP3'
+    }
+    if((Get-FileHash -LiteralPath $plainSource -Algorithm SHA256).Hash -cne $plainBefore){
+        throw 'Read-only Masstagger UI discovery unexpectedly modified plain MP3'
     }
     Write-Host 'MASSTAGGER_READ_ONLY_UI_DISCOVERY_MP3_BYTE_EXACT=PASS'
 }
