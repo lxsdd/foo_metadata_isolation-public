@@ -41,3 +41,17 @@ findings, a different historical line, any additional finding, or incomplete
 PR scan still produce **FAIL**. A reviewed synthetic false positive is
 reported accurately, not mislabelled as zero raw matches. No scan rules
 have been disabled or broadened.
+
+## Exact original Masstagger command on real embedded-CUE MP3
+
+A second distinct *real* Masstagger action now targets a freshly generated
+two-track embedded-Cue MP3 in the same isolated Windows host alongside
+Metadata Isolation. The physical file is passed to the original documented
+Masstagger command-line interface, asking to set a synthetic COMMENT.
+An independent oracle requires the physical COMM postimage to contain
+that value and **every other ID3 frame (including opaque PRIV and full
+TXXX CUESHEET raw text)** and full MPEG audio to match preimage exactly.
+If the action is rejected, prompts for an unsupported workflow, or
+rewrites the virtual Cue or unrelated physical frame, **the test fails**.
+A positive physical MP3 outcome without a Cue alone cannot qualify this
+more demanding scenario. No private user presets or authorization are inferred.

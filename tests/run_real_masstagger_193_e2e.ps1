@@ -137,6 +137,44 @@ try {
     & python tests/assert_masstagger_plain_tag_write.py $before $plain $token
     if($LASTEXITCODE -ne 0){throw 'Independent Masstagger frame, PRIV, audio integrity oracle failed'}
     Write-Host ("REAL_HOST_MASSTAGGER_193_PHYSICAL_NON_NOOP_TAG_WRITE_$Architecture=PASS")
+    # True third-party command applied to a new *embedded-CUE* MP3, the
+    # key physical-vs-virtual safety case this component exists to protect.
+    # Never use any owner music or a foobar configuration from a real device.
+    $cueDir=Join-Path $root 'embedded-cue-masstagger'
+    [void](New-Item -ItemType Directory -Path $cueDir)
+    $cueSource=Join-Path $cueDir 'track-01.mp3'
+    & python tests/make_isolated_embedded_mp3.py $cueSource
+    if($LASTEXITCODE -ne 0){throw 'Embedded Cue synthetic fixture failed'}
+    $cueBefore=Join-Path $cueDir 'track-01.before'
+    Copy-Item -LiteralPath $cueSource -Destination $cueBefore
+    $cueSha=(Get-FileHash -LiteralPath $cueSource -Algorithm SHA256).Hash
+    $cueExpectedComment='MI_SYNTHETIC_CUE_PHYSICAL_193'
+    $cueLauncher=Start-Process -FilePath $exe -WorkingDirectory $portable -ArgumentList @("/tag:comment=$cueExpectedComment",('"' + $cueSource + '"')) -PassThru
+    if(-not $cueLauncher.WaitForExit(25000)){
+        throw 'Genuine Masstagger embedded Cue command launcher timed out'
+    }
+    if($cueLauncher.ExitCode -ne 0){
+        throw 'Genuine Masstagger embedded Cue command launcher exited unsuccessfully'
+    }
+    $cueChanged=$false
+    for($attempt=0;$attempt -lt 100;$attempt++){
+        Start-Sleep -Milliseconds 180
+        $process.Refresh()
+        if($process.HasExited){throw 'Two-component host crashed during embedded Cue tagging'}
+        if((Get-FileHash -LiteralPath $cueSource -Algorithm SHA256).Hash -cne $cueSha){
+            $cueChanged=$true
+            break
+        }
+    }
+    if(-not $cueChanged){
+        throw 'MASSTAGGER_EMBEDDED_CUE_REAL_WRITE_NOT_OBSERVED (safe reject possible, but positive user workflow NOT QUALIFIED)'
+    }
+    & python tests/assert_masstagger_embedded_cue_physical.py $cueBefore $cueSource $cueExpectedComment
+    if($LASTEXITCODE -ne 0){
+        throw 'Actual Masstagger Cue physical-vs-virtual postimage oracle failed'
+    }
+    Write-Host ("REAL_HOST_MASSTAGGER_193_EMBEDDED_CUE_PHYSICAL_COMMENT_$Architecture=PASS")
+
 }finally{
     if($null -ne $process){
         try{if(-not $process.HasExited){Stop-Process -Id $process.Id -Force -ErrorAction Stop}}catch{Write-Warning 'Disposable host could not be stopped'}
