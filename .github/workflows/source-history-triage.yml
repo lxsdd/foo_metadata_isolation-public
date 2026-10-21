@@ -1,0 +1,50 @@
+name: Source-only historical security triage
+
+# Diagnostic report only: a successful run does not approve v1.0.0.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/source-history-triage.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-history:
+    name: Redacted complete visible Git blob audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Fetch reviewed read-only scanner source
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/dev-infrastructure-public
+          ref: 4a562946975b610651a0a4e71a422699a7a604d9
+          persist-credentials: false
+      - name: Audit reachable history and PR refs without printing credentials
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+          GIT_LFS_SKIP_SMUDGE: '1'
+        run: |
+          set -euo pipefail
+          python3 scripts/audit_git_history.py foo_metadata_isolation-public
+
+  independent-gitleaks:
+    name: Redacted pinned independent Gitleaks history audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Fetch reviewed read-only scanner source
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/dev-infrastructure-public
+          ref: 4a562946975b610651a0a4e71a422699a7a604d9
+          persist-credentials: false
+      - name: Audit all reachable refs with SHA256 pinned Gitleaks
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          set -euo pipefail
+          python3 scripts/audit_gitleaks.py foo_metadata_isolation-public

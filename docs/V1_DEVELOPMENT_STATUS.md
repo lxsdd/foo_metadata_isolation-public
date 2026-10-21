@@ -39,6 +39,10 @@ Draft [PR #7](https://github.com/lxsdd/foo_metadata_isolation-public/pull/7) con
 
 A fail-closed, mutation-tested tracked-file gate verifies the absence of committed user audio, databases, credentials-by-filename, packaged DLLs and installer archives. The three bundled foobar SDK \`.lib\` files are the *only* permitted tracked prebuilt libraries and are pinned to their reviewed Git object hashes. The SDK, pfc, libPPUI, WTL and combined third-party notices must all remain present and linked. This is **not** a full binary license review or a historical secrets scan. There is no explicit top-level license for the project's own code in the checked Draft snapshot; license selection/authorization is **PENDING OWNER DECISION**, not inferred from the vendor SDK's licenses.
 
+### Historical Git/secret audit — distinct from tracked-tree check
+
+The tracked source/no-user-media gate is **not** a full-history or secrets clearance. The separate `source-history-triage.yml` reads the existing immutable, source-only history and Gitleaks scanners from `lxsdd/dev-infrastructure-public@4a562946975b610651a0a4e71a422699a7a604d9`, scans public reachability including available PR refs, and emits redacted categories/counts only. It does not request secrets or credentials, upload artifacts, or approve redistributability. Successful tool execution means **SCAN COMPLETED**, not **ZERO FINDINGS**; evidence requires independent review of any findings and historical licensing. No full release sign-off is implied.
+
 ## Remaining release gates — explicitly NOT PASS
 
 1. **Real third-party workflow end-to-end:** authenticated Discogger and real Masstagger with supported changes plus unsupported multivalue `STYLE`, correctly restored third-party configs, observable non-no-op commit and complete postimage; security, license and secret handling apply.
