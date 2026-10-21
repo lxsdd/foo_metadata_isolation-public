@@ -2,6 +2,15 @@ name: Qualified manual candidate
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/candidate.yml'
+      - 'src/**'
+      - 'sdk/**'
+      - 'tests/**'
+      - 'ci/**'
+      - 'component.sln'
 
 permissions:
   contents: read
@@ -11,24 +20,92 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Checkout reviewed foobar SDK 2026-10-01 source
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/foobar2000_component_template
+          ref: 31a35947a7527826c2199491692802e3ce3d8bd7
+          path: external/sdk-template
+          persist-credentials: false
       - uses: microsoft/setup-msbuild@v2
       - name: Validate repository and build both architectures
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
+          ./ci/test-latest-sdk.ps1
+          # New SDK helpers project needs WTL headers before it is compiled.
+          $wtl=(Join-Path (Get-Location) 'wtl/Include')
+          if(-not (Test-Path -LiteralPath (Join-Path $wtl 'atlapp.h') -PathType Leaf)){throw 'Pinned WTL atlapp.h missing'}
+          $env:CL='/I"' + $wtl + '" ' + $env:CL
           ./validate_project.ps1
           foreach($platform in @('Win32','x64')) {
             & msbuild 'component.sln' /t:Build /p:Configuration=Release /p:Platform=$platform /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
             if($LASTEXITCODE -ne 0){throw "Build failed: $platform"}
           }
+          & python tests/verify_source_release_provenance.py
+          if($LASTEXITCODE -ne 0){throw 'Source-only release provenance validation failed'}
+          & python tests/test_real_virtual_timing_ui_commit_oracle.py
+          if($LASTEXITCODE -ne 0){throw 'Timing UI Commit preservation oracle self-tests failed'}
+          # Release configuration only. Reject diagnostic/test-probe strings and
+          # absolute/non-portable PDB paths before any candidate packaging.
+          & ./validate_release_binaries.ps1
+          if($LASTEXITCODE -ne 0){throw 'Probe-free release binaries gate failed'}
           foreach($test in @('assert_partial_commit_contract.py','assert_structured_logging_contract.py','assert_phase10_locale_contract.py','assert_phase12_physical_contract.py','assert_phase14_format_contract.py','assert_virtual_ux_contract.py','assert_physical_metadata_audit_contract.py','assert_ui_hardening_contract.py','assert_tooltip_contract.py')) {
             & python "tests/$test"
             if($LASTEXITCODE -ne 0){throw "Static regression failed: $test"}
           }
-      - name: Package and verify exact candidate
+      # Verify a local ephemeral package before contacting the external
+      # foobar2000 download host. Never upload from Draft or manual CI.
+      - name: Package and verify exact candidate (runner-only)
         shell: pwsh
-        run: ./ci/package.ps1 -BuildRoot . -ComponentId foo_metadata_isolation
-      - uses: actions/upload-artifact@v7
+        env:
+          EXPECTED_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          ./ci/package.ps1 -BuildRoot . -ComponentId foo_metadata_isolation
+          $manifest=Get-Content -LiteralPath candidate/manifest.json -Raw | ConvertFrom-Json
+          if($manifest.release_authorized -ne $false -or $manifest.runtime_acceptance -cne 'PENDING') {
+            throw 'Candidate manifest illegally authorizes a release or runtime acceptance'
+          }
+          $expectedHead=if($env:GITHUB_EVENT_NAME -eq 'pull_request'){$env:EXPECTED_PR_HEAD_SHA}else{$env:GITHUB_SHA}
+          if($manifest.source_head_sha -cne $expectedHead -or
+             $manifest.built_checkout_sha -cne $env:GITHUB_SHA -or
+             $manifest.commit -cne $env:GITHUB_SHA) {
+            throw 'Candidate manifest GitHub PR-head and checkout provenance mismatch'
+          }
+          Write-Host ('RUNNER_ONLY_CANDIDATE_PROVENANCE=PASS; ref kind=' + $manifest.checkout_kind)
+          Write-Host 'RUNNER_ONLY_CANDIDATE_FORMAT=PASS; runtime acceptance remains PENDING'
+      - name: Gate - component ZIP layout mutation regression
+        shell: pwsh
+        run: |
+          ./tests/assert_candidate_package_layout.ps1
+          # PowerShell script throws on failure; inherited LASTEXITCODE is unrelated.
+      - name: HARD GATE - live foobar2000 Win32 component load
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec
+        with:
+          architecture: Win32
+          component-dll: build/foo_metadata_isolation.dll
+          context-command: 'Metadata Isolation/Audit physical metadata for selection...'
+          expected-window-title: 'Metadata Isolation - Physical Metadata Audit'
+          required-control-ids: '1201,1202,1203,1204,1208'
+          context-fixture: external-cue
+      - name: HARD GATE - live foobar2000 x64 component load
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec
+        with:
+          architecture: x64
+          component-dll: build/x64/foo_metadata_isolation.dll
+          context-command: 'Metadata Isolation/Audit physical metadata for selection...'
+          expected-window-title: 'Metadata Isolation - Physical Metadata Audit'
+          required-control-ids: '1201,1202,1203,1204,1208'
+          context-fixture: external-cue
+      # Hard hold until explicit owner authorization: source qualification
+      # on PRs and manual runs must not distribute candidate binaries.
+      # Adopt reviewed source-only publication gate from Draft PR #7.
+      - name: Upload candidate (distribution currently on hold)
+        if: false # Candidate stays on ephemeral CI runner
+        uses: actions/upload-artifact@v7
         with:
           name: foo_metadata_isolation-candidate-${{ github.sha }}
           path: candidate/*
