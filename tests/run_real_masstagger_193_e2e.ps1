@@ -103,7 +103,7 @@ try {
             $seenMetadata=@($mods | Where-Object {$_.ModuleName -ieq 'foo_metadata_isolation.dll' -and $_.FileName.StartsWith($portable,[StringComparison]::OrdinalIgnoreCase)}).Count -eq 1
             $seenMasstagger=@($mods | Where-Object {$_.ModuleName -ieq 'foo_masstag.dll' -and $_.FileName.StartsWith($portable,[StringComparison]::OrdinalIgnoreCase)}).Count -eq 1
             if($seenMetadata -and $seenMasstagger){break}
-        }catch[System.ComponentModel.Win32Exception]{}
+        } catch [System.ComponentModel.Win32Exception] {}
     }
     if(-not $seenMetadata -or -not $seenMasstagger){
         throw "Actual co-load failed: isolation=$seenMetadata masstagger=$seenMasstagger"
