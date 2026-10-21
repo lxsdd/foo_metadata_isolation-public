@@ -4,7 +4,7 @@ import subprocess, json, re
 ROOT=Path(__file__).resolve().parents[1]
 NOTICES={'sdk/sdk-license.txt','sdk/pfc/pfc-license.txt','sdk/libPPUI/libPPUI-license.txt','wtl/MS-PL.txt','THIRD_PARTY_NOTICES.md'}
 ALLOWED_SDK={'sdk/README.md','sdk/SDK-PIN.json','sdk/sdk-license.txt','sdk/pfc/pfc-license.txt','sdk/libPPUI/libPPUI-license.txt'}
-PIN={'sdk_version':"2026-10-01','source_repository':"lxsdd/foobar2000_component_template','source_commit':"31a35947a7527826c2199491692802e3ce3d8bd7','source_tree':"2ba8caeb73f72633ad7f60ee5f72ed8074a0eb17','upstream_archive_sha256':"d4c55077336fae81bf8df0259b5b2748fa45ea84132c656ead93eb123cbcdc26','upstream_url':"https://www.foobar2000.org/downloads/SDK-2026-10-01.7z','archive_size_bytes':793738}
+PIN={"sdk_version":"2026-10-01","source_repository":"lxsdd/foobar2000_component_template","source_commit":"31a35947a7527826c2199491692802e3ce3d8bd7","source_tree":"2ba8caeb73f72633ad7f60ee5f72ed8074a0eb17","upstream_archive_sha256":"d4c55077336fae81bf8df0259b5b2748fa45ea84132c656ead93eb123cbcdc26","upstream_url":"https://www.foobar2000.org/downloads/SDK-2026-10-01.7z","archive_size_bytes":793738}
 FORBIDDEN=re.compile(r'\.(?:mp3|flac|wv|ogg|opus|wav|aiff?|cue|mp4|m4a|db|sqlite|sqlite3|lib|dll|exe|fb2k-component|zip|7z|rar|pfx|p12|pem|key|kdbx|pdb|obj|ilk|idb|cache)$',re.I)
 SECRETS={'.env','id_rsa','id_ed25519','credentials.json','secrets.json'}
 def issues(paths,pin,notices):
