@@ -219,48 +219,18 @@ foreach($control in $buttons){
 $commitHwnd=[MetadataIsolationTimingWindowLocator]::FindDescendantButton($review,'Commit')
 $discardHwnd=[MetadataIsolationTimingWindowLocator]::FindDescendantButton($review,'Discard')
 if($commitHwnd -eq [IntPtr]::Zero -or $discardHwnd -eq [IntPtr]::Zero){
-  # Log names only (never paths, contents, or user-controlled metadata).
+  # Report only bounded, generic UI labels from the disposable host.
   $all=$reviewRoot.FindAll(
     [System.Windows.Automation.TreeScope]::Descendants,
     [System.Windows.Automation.Condition]::TrueCondition)
   $summary=@(for($i=0;$i -lt [Math]::Min(50,$all.Count);$i++){
     $item=$all.Item($i)
     $name=$item.Current.Name
-    if($name -match '^(Commit|Discard|OK|Cancel|Close|Review virtual Cue timing change)
-Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_NATIVE_ACTIONS=PASS'
-if($commitFound -and $null -ne $discardButton){
-  $invoke=$null
-  if($discardButton.TryGetCurrentPattern(
-    [System.Windows.Automation.InvokePattern]::Pattern,[ref]$invoke)){
-    ([System.Windows.Automation.InvokePattern]$invoke).Invoke()
-    Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_UIA_INVOKE=PASS'
-  }else{
-    [void][MetadataIsolationTimingWindowLocator]::Send($discardHwnd,0x00F5)
-    Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_UIA_INVOKE=PENDING_PROVIDER_UNEXPOSED'
-  }
-}else{
-  # A real native click is evidence for Discard, not evidence for UIA exposure.
-  [void][MetadataIsolationTimingWindowLocator]::Send($discardHwnd,0x00F5)
-  Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_UIA_BUTTONS=PENDING_PROVIDER_UNEXPOSED'
-}
-for($retry=0;$retry -lt 80;$retry++){
-  if(-not [MetadataIsolationTimingWindowLocator]::IsWindow($review)){break}
-  Start-Sleep -Milliseconds 100
-}
-if([MetadataIsolationTimingWindowLocator]::IsWindow($review)){
-  throw 'Actual Discard command did not close the review'
-}
-if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $before){
-  throw 'Discarding actual Virtual timing preview modified source MP3'
-}
-Write-Host 'PRODUCTION_VIRTUAL_TIMING_REVIEW_DISCARD_BYTE_EXACT=PASS'
-
-){
+    if($name -match '^(Commit|Discard|OK|Cancel|Close|Review virtual Cue timing change)$'){
       $item.Current.ControlType.ProgrammaticName+':'+$name
     }
   }) -join ','
-  throw ("Actual review has no unique native Commit/Discard buttons; recognized UIA names='{0}'; native handles Commit={1}, Discard={2}" -f
-    $summary,$commitHwnd,$discardHwnd)
+  throw ("Actual review has no unique native Commit/Discard buttons; UIA labels='{0}'" -f $summary)
 }
 $nativeCommit=[MetadataIsolationTimingWindowLocator]::Text($commitHwnd)
 $nativeDiscard=[MetadataIsolationTimingWindowLocator]::Text($discardHwnd)
