@@ -58,6 +58,18 @@ jobs:
           repository: lxsdd/dev-infrastructure-public
           ref: 4a562946975b610651a0a4e71a422699a7a604d9
           persist-credentials: false
+      # The first real third-party Masstagger synthetic fixture introduced
+      # exactly one deterministic *non-secret* fixture string at an immutable
+      # historical commit. Inspect that original line before accepting its
+      # one exact redacted false-positive fingerprint. Never allowlist a
+      # generic rule, filename, branch or future source change.
+      - name: Check immutable historical Masstagger synthetic marker (not an actual credential)
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/foo_metadata_isolation-public
+          ref: f355c31a991fc802f6cf8983ef2a3380ddfbf898
+          path: .reviewed-masstagger-false-positive
+          persist-credentials: false
       - name: Audit all reachable refs with SHA256 pinned Gitleaks
         env:
           GIT_TERMINAL_PROMPT: '0'
@@ -72,10 +84,33 @@ jobs:
                    if line.startswith("INDEPENDENT_SECRET_AUDIT_JSON=")]
           if len(matches)!=1:raise SystemExit("GITLEAKS_GATE=FAIL no unique redacted audit report")
           a=json.loads(matches[0])
+          import hashlib,subprocess
           if not (a.get("repository")=="foo_metadata_isolation-public"
               and a.get("completed") is True and a.get("included_pr_refs") is True
-              and a.get("version")=="8.30.1" and a.get("findings")==0
-              and a.get("rules")=={}):
-              raise SystemExit("GITLEAKS_GATE=FAIL historical secret detection requires triage")
-          print("GITLEAKS_GATE=PASS zero findings in reachable history")
+              and a.get("version")=="8.30.1"):
+              raise SystemExit("GITLEAKS_GATE=FAIL missing/incomplete independent scan")
+          # Source-only review of one *immutable* previously committed
+          # synthetic constant. Gitleaks --redact=100 emits "REDACTED"
+          # (length 8) as the secret: its digest is not a credential hash.
+          historic=Path(".reviewed-masstagger-false-positive")
+          source=historic/"tests/run_real_masstagger_193_e2e.ps1"
+          commit=subprocess.check_output(["git","rev-parse","HEAD"],cwd=historic,text=True).strip()
+          historical_line="    $token='MI_SYNTHETIC_MASSTAGGER_193'"
+          verified=(commit=="f355c31a991fc802f6cf8983ef2a3380ddfbf898"
+             and source.is_file()
+             and source.read_text(encoding="utf-8").splitlines()[119]==historical_line)
+          fingerprint={"rule":"generic-api-key","path_hash":"39b056cbb3e8",
+              "line":120,"commit_prefix":"f355c31a991f",
+              "secret_digest":hashlib.sha256(b"REDACTED").hexdigest()[:12],
+              "secret_length":8,"test_file":True}
+          findings=a.get("redacted_findings")
+          if a.get("findings")==0 and a.get("rules")=={}:
+              print("GITLEAKS_GATE=PASS zero findings in reachable history")
+          elif (verified and a.get("findings")==1 and
+              a.get("rules")=={"generic-api-key":1} and
+              isinstance(findings,list) and findings==[fingerprint]):
+              print("GITLEAKS_GATE=PASS one exact immutable synthetic false positive reviewed; zero unresolved findings")
+              print("GITLEAKS_REVIEWED_HISTORICAL_SYNTHETIC_EXCEPTION=1")
+          else:
+              raise SystemExit("GITLEAKS_GATE=FAIL unreviewed historical secret finding")
           PY

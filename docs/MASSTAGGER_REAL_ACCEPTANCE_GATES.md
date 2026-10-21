@@ -23,3 +23,21 @@ Masstagger tests do not prove the user's preset behavior.
 
 Release/merge, installer publication and user audio access remain separately
 forbidden by the existing source-only policy.
+
+## Strict historical Gitleaks false-positive triage
+
+An actual independent Gitleaks scan flagged **one** newly introduced test
+literal from the first genuine Masstagger experiment (commit
+`f355c31a991fc802f6cf8983ef2a3380ddfbf898`, test script line 120).
+The line is exactly a fixed synthetic `COMMENT` value on disposable
+copyright-free media, *not* a user credential or live API key.
+
+History security is not disabled: the scanner still examines the complete
+reachable history and all PR heads; a narrow conditional checks one
+exact redacted result fingerprint (commit prefix, file path hash, line
+number, category) **and** independently checks out that exact immutable
+historical commit and validates its full literal line. Unexpected
+findings, a different historical line, any additional finding, or incomplete
+PR scan still produce **FAIL**. A reviewed synthetic false positive is
+reported accurately, not mislabelled as zero raw matches. No scan rules
+have been disabled or broadened.
