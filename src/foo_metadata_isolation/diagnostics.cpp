@@ -42,6 +42,7 @@ enum class probe_mode {
     map_physical_with_duplicate,
     map_physical_with_remote,
     map_all_handles_physical,
+    map_many_distinct_physical,
     context_tree_physical,
     run_masstagger_physical,
     run_discogger_physical,
@@ -219,6 +220,7 @@ bool parse_probe_mode(const char* token, probe_mode& mode) {
         { "/metadata-isolation-probe-map-physical-duplicate", probe_mode::map_physical_with_duplicate },
         { "/metadata-isolation-probe-map-physical-remote", probe_mode::map_physical_with_remote },
         { "/metadata-isolation-probe-map-all-handles-physical", probe_mode::map_all_handles_physical },
+        { "/metadata-isolation-probe-map-111-distinct-physical", probe_mode::map_many_distinct_physical },
         { "/metadata-isolation-probe-context-tree-physical", probe_mode::context_tree_physical },
         { "/metadata-isolation-probe-run-masstagger-physical", probe_mode::run_masstagger_physical },
         { "/metadata-isolation-probe-run-discogger-physical", probe_mode::run_discogger_physical },
@@ -1744,7 +1746,8 @@ public:
             } else if (m_mode == probe_mode::map_physical ||
                 m_mode == probe_mode::map_physical_with_duplicate ||
                 m_mode == probe_mode::map_physical_with_remote ||
-                m_mode == probe_mode::map_all_handles_physical) {
+                m_mode == probe_mode::map_all_handles_physical ||
+                m_mode == probe_mode::map_many_distinct_physical) {
                 metadb_handle_list mapped_items = m_items;
                 if (m_mode == probe_mode::map_physical_with_duplicate) {
                     mapped_items.add_item(metadb::get()->handle_create(path, 0));
@@ -1766,6 +1769,37 @@ public:
                             }
                         }
                     }
+                }
+                if (m_mode == probe_mode::map_many_distinct_physical) {
+                    // Source-only CI test: caller places 111 disposable MP3 files
+                    // named track-01 through track-111 in one private runner
+                    // directory. No files or metadata are ever written here.
+                    const std::string source(path);
+                    constexpr const char* known_leaf = "track-01.mp3";
+                    if (!source.ends_with(known_leaf)) {
+                        throw pfc::exception("Unexpected many-source test fixture name");
+                    }
+                    const std::string folder = source.substr(
+                        0, source.size() - std::strlen(known_leaf));
+                    mapped_items.remove_all();
+                    // Reverse first appearance deliberately: a set must not
+                    // accidentally reorder the physical handle output.
+                    for (int i = 111; i >= 1; --i) {
+                        const std::string leaf = std::string("track-") +
+                            (i < 10 ? "0" : "") + std::to_string(i) + ".mp3";
+                        mapped_items.add_item(metadb::get()->handle_create(
+                            (folder + leaf).c_str(), 0));
+                    }
+                    for (int i = 111; i >= 1; --i) {
+                        const std::string leaf = std::string("track-") +
+                            (i < 10 ? "0" : "") + std::to_string(i) + ".mp3";
+                        mapped_items.add_item(metadb::get()->handle_create(
+                            (folder + leaf).c_str(), 0));
+                    }
+                    // The source fixture genuinely contains two virtual Cue
+                    // subsongs. Both must collapse onto its physical source.
+                    mapped_items.add_item(metadb::get()->handle_create(path, 1));
+                    mapped_items.add_item(metadb::get()->handle_create(path, 2));
                 }
                 const physical_target_map mapping = map_to_physical_targets(mapped_items);
                 report << "mapping_input_count=" << mapping.input_count << "\n";
