@@ -270,12 +270,14 @@ try{
         Write-Host ('MASSTAGGER_ORIGINAL_ADD_ACTION_MENU_COUNT=' + $popup.Count)
         foreach($item in $popup){Write-Host ('MASSTAGGER_ORIGINAL_ADD_ACTION_MENU_ITEM=' + $item)}
         Write-Host 'MASSTAGGER_ORIGINAL_ADD_ACTION_MENU=OBSERVED_READ_ONLY'
+        # Baseline must precede dispatch; an immediate modal must not be
+        # mistaken for an already-existing window.
+        $baseline=@([NativeOriginalMasstaggerBootstrapUI]::Titles($FoobarPid))
 
         if(@($popup | Where-Object {$_ -ceq 'Set value...'}).Count -eq 1 -and
            [NativeOriginalMasstaggerBootstrapUI]::DispatchOriginalSetValueAction($dialog,$FoobarPid)){
           # The third-party configuration window may appear asynchronously.
           # Observe only bounded owned top-level titles, never edit field text.
-          $baseline=@([NativeOriginalMasstaggerBootstrapUI]::Titles($FoobarPid))
           $titles=@()
           $newTitles=@()
           for($configPoll=0;$configPoll -lt 25;$configPoll++){
@@ -287,7 +289,204 @@ try{
           Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_CONFIGURATION_TOP_LEVEL=' + ($titles -join ';'))
           Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_NEW_WINDOWS_COUNT=' + $newTitles.Count)
           foreach($newTitle in $newTitles){
-            if($newTitle.Length -le 80 -and $newTitle -match '^[A-Za-z0-9 ._-]+
+            if($newTitle.Length -le 80 -and $newTitle -match '^[A-Za-z0-9 ._-]+@([NativeOriginalMasstaggerBootstrapUI]::Controls($dialog,$FoobarPid))
+          Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL_COUNT=' + $updatedControls.Count)
+          foreach($item in $updatedControls){Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL=' + $item)}
+          Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=GUARDED_REAL_INPUT_SENT_CONFIGURATION_PENDING'
+          # No field text is entered here; the native action's configuration
+          # modal is deliberately closed without accepting or running it.
+          [void][NativeOriginalMasstaggerBootstrapUI]::CloseKnown($FoobarPid,'Set value')
+          [void][NativeOriginalMasstaggerBootstrapUI]::CloseKnown($FoobarPid,'Set value...')
+        }else{
+          Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=PENDING_NO_VERIFIED_MENU_COMMAND'
+        }
+
+      }else{
+        Write-Host 'MASSTAGGER_ORIGINAL_ADD_ACTION_MENU=PENDING_NO_POPUP_ITEMS'
+      }
+      [NativeOriginalMasstaggerBootstrapUI]::CancelOriginalPopup($dialog,$FoobarPid)
+    }else{
+      Write-Host 'MASSTAGGER_ORIGINAL_ADD_ACTION_MENU=PENDING_NO_UNIQUE_ADD_BUTTON'
+    }
+
+  }
+}finally{
+  if($dialog -ne [IntPtr]::Zero){
+    [NativeOriginalMasstaggerBootstrapUI]::Close($dialog,$FoobarPid)
+  }
+  if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $before){
+    throw 'Native original Masstagger UI read-only discovery modified embedded Cue MP3'
+  }
+  Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_CUE_MP3_BYTE_EXACT=PASS'
+}
+for($i=0;$i -lt 55 -and -not (Test-Path -LiteralPath $report);$i++){
+  Start-Sleep -Milliseconds 150
+}
+if(-not (Test-Path -LiteralPath $report)){
+  Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_SDK_REPORT=PENDING_NOT_EMITTED'
+}else{
+  $result=Get-Content -LiteralPath $report -Raw
+  $safe=@( $result -split "[\r\n]+" | Where-Object {
+    $_ -match '^(native_original_masstagger_bootstrap|native_original_context_executed|write_result)='
+  })
+  Write-Host ('MASSTAGGER_NATIVE_BOOTSTRAP_SDK_REPORT=' + ($safe -join ';'))
+  if($observed -and
+     $result -match '(?m)^native_original_context_executed=Manage scripts\s*$' -and
+     $result -match '(?m)^write_result=original_ui_returned\s*$'){
+    Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_REAL_ORIGINAL_MANAGE_SCRIPTS_UI=PASS_READ_ONLY'
+  }else{
+    Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_REAL_ORIGINAL_MANAGE_SCRIPTS_UI=PENDING'
+  }
+}
+
+# The CI-only native startup probe must leave an independently observable
+# bounded phase trace even when the original modal UI cannot open. No file
+# paths, tag text, private presets or exception messages are ever printed.
+$phaseTrace=Join-Path $env:RUNNER_TEMP 'mi-original-masstagger-bootstrap-trace.txt'
+$allowed=@(
+  'INIT_ENTERED','NO_FIXTURE_ENV','INVALID_ENV_LENGTH',
+  'INVALID_CANONICAL_PATH','REFUSED_PATH_SCOPE','REFUSED_FILE_ATTRIBUTES',
+  'SCHEDULED_MAIN_THREAD','CALLBACK_ENTERED','INVALID_SYNTHETIC_SUBSONGS',
+  'ORIGINAL_COMMAND_NOT_FOUND','ORIGINAL_COMMAND_EXECUTE_ENTERED',
+  'ORIGINAL_COMMAND_EXECUTE_RETURNED','BOOTSTRAP_EXCEPTION',
+  'REPORT_WRITTEN','REPORT_WRITE_FAILED'
+)
+if(-not (Test-Path -LiteralPath $phaseTrace)){
+  Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_PHASES=NOT_EMITTED'
+  throw 'CI-only native bootstrap startup trace absent; not qualified as a runtime probe'
+}
+$phases=@(Get-Content -LiteralPath $phaseTrace | Where-Object {$_ -cin $allowed})
+Write-Host ('MASSTAGGER_NATIVE_BOOTSTRAP_PHASES=' + ($phases -join ','))
+if($phases.Count -eq 0 -or $phases[0] -cne 'INIT_ENTERED'){
+  throw 'CI-only native bootstrap did not reach its guarded initialization entry'
+}
+if(@($phases | Where-Object {$_ -cin @('NO_FIXTURE_ENV','INVALID_ENV_LENGTH','INVALID_CANONICAL_PATH','REFUSED_PATH_SCOPE','REFUSED_FILE_ATTRIBUTES')}).Count -gt 0){
+  throw 'CI-only native bootstrap rejected its disposable fixture before SDK dispatch'
+}
+if(@($phases | Where-Object {$_ -ceq 'SCHEDULED_MAIN_THREAD'}).Count -ne 1){
+  throw 'CI-only native bootstrap was not scheduled on foobar main thread'
+}
+
+Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_POSITIVE_PHYSICAL_COMMIT=PENDING_EXPLICIT_UI_ACTION'
+
+# The next, independently existing CLI/context-tree probe reuses the SAME
+# synthetic per-file report name. Clear only the verified report of this
+# disposable startup probe, never a user file or an unrecognized report.
+if(Test-Path -LiteralPath $report){
+  if($result -notmatch '(?m)^native_original_masstagger_bootstrap=true\s*$' -or
+     $result -notmatch '(?m)^native_original_context_executed=Manage scripts\s*$' -or
+     $result -notmatch '(?m)^write_result=original_ui_returned\s*$'){
+    throw 'Refusing to remove unqualified native bootstrap report'
+  }
+  Remove-Item -LiteralPath $report -Force
+  Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_VERIFIED_REPORT_CLEANED=PASS'
+}
+
+){
+              Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_NEW_WINDOW=' + $newTitle)
+            }else{
+              Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_NEW_WINDOW=<redacted>'
+            }
+          }
+          $updatedControls=@([NativeOriginalMasstaggerBootstrapUI]::Controls($dialog,$FoobarPid))
+          Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL_COUNT=' + $updatedControls.Count)
+          foreach($item in $updatedControls){Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL=' + $item)}
+          Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=ITEM_CLICKED_READ_ONLY_CONFIG_PENDING'
+          # No field text is entered here; the native action's configuration
+          # modal is deliberately closed without accepting or running it.
+          [void][NativeOriginalMasstaggerBootstrapUI]::CloseKnown($FoobarPid,'Set value')
+          [void][NativeOriginalMasstaggerBootstrapUI]::CloseKnown($FoobarPid,'Set value...')
+        }else{
+          Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=PENDING_NO_VERIFIED_MENU_COMMAND'
+        }
+
+      }else{
+        Write-Host 'MASSTAGGER_ORIGINAL_ADD_ACTION_MENU=PENDING_NO_POPUP_ITEMS'
+      }
+      [NativeOriginalMasstaggerBootstrapUI]::CancelOriginalPopup($dialog,$FoobarPid)
+    }else{
+      Write-Host 'MASSTAGGER_ORIGINAL_ADD_ACTION_MENU=PENDING_NO_UNIQUE_ADD_BUTTON'
+    }
+
+  }
+}finally{
+  if($dialog -ne [IntPtr]::Zero){
+    [NativeOriginalMasstaggerBootstrapUI]::Close($dialog,$FoobarPid)
+  }
+  if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $before){
+    throw 'Native original Masstagger UI read-only discovery modified embedded Cue MP3'
+  }
+  Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_CUE_MP3_BYTE_EXACT=PASS'
+}
+for($i=0;$i -lt 55 -and -not (Test-Path -LiteralPath $report);$i++){
+  Start-Sleep -Milliseconds 150
+}
+if(-not (Test-Path -LiteralPath $report)){
+  Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_SDK_REPORT=PENDING_NOT_EMITTED'
+}else{
+  $result=Get-Content -LiteralPath $report -Raw
+  $safe=@( $result -split "[\r\n]+" | Where-Object {
+    $_ -match '^(native_original_masstagger_bootstrap|native_original_context_executed|write_result)='
+  })
+  Write-Host ('MASSTAGGER_NATIVE_BOOTSTRAP_SDK_REPORT=' + ($safe -join ';'))
+  if($observed -and
+     $result -match '(?m)^native_original_context_executed=Manage scripts\s*$' -and
+     $result -match '(?m)^write_result=original_ui_returned\s*$'){
+    Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_REAL_ORIGINAL_MANAGE_SCRIPTS_UI=PASS_READ_ONLY'
+  }else{
+    Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_REAL_ORIGINAL_MANAGE_SCRIPTS_UI=PENDING'
+  }
+}
+
+# The CI-only native startup probe must leave an independently observable
+# bounded phase trace even when the original modal UI cannot open. No file
+# paths, tag text, private presets or exception messages are ever printed.
+$phaseTrace=Join-Path $env:RUNNER_TEMP 'mi-original-masstagger-bootstrap-trace.txt'
+$allowed=@(
+  'INIT_ENTERED','NO_FIXTURE_ENV','INVALID_ENV_LENGTH',
+  'INVALID_CANONICAL_PATH','REFUSED_PATH_SCOPE','REFUSED_FILE_ATTRIBUTES',
+  'SCHEDULED_MAIN_THREAD','CALLBACK_ENTERED','INVALID_SYNTHETIC_SUBSONGS',
+  'ORIGINAL_COMMAND_NOT_FOUND','ORIGINAL_COMMAND_EXECUTE_ENTERED',
+  'ORIGINAL_COMMAND_EXECUTE_RETURNED','BOOTSTRAP_EXCEPTION',
+  'REPORT_WRITTEN','REPORT_WRITE_FAILED'
+)
+if(-not (Test-Path -LiteralPath $phaseTrace)){
+  Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_PHASES=NOT_EMITTED'
+  throw 'CI-only native bootstrap startup trace absent; not qualified as a runtime probe'
+}
+$phases=@(Get-Content -LiteralPath $phaseTrace | Where-Object {$_ -cin $allowed})
+Write-Host ('MASSTAGGER_NATIVE_BOOTSTRAP_PHASES=' + ($phases -join ','))
+if($phases.Count -eq 0 -or $phases[0] -cne 'INIT_ENTERED'){
+  throw 'CI-only native bootstrap did not reach its guarded initialization entry'
+}
+if(@($phases | Where-Object {$_ -cin @('NO_FIXTURE_ENV','INVALID_ENV_LENGTH','INVALID_CANONICAL_PATH','REFUSED_PATH_SCOPE','REFUSED_FILE_ATTRIBUTES')}).Count -gt 0){
+  throw 'CI-only native bootstrap rejected its disposable fixture before SDK dispatch'
+}
+if(@($phases | Where-Object {$_ -ceq 'SCHEDULED_MAIN_THREAD'}).Count -ne 1){
+  throw 'CI-only native bootstrap was not scheduled on foobar main thread'
+}
+
+Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_POSITIVE_PHYSICAL_COMMIT=PENDING_EXPLICIT_UI_ACTION'
+
+# The next, independently existing CLI/context-tree probe reuses the SAME
+# synthetic per-file report name. Clear only the verified report of this
+# disposable startup probe, never a user file or an unrecognized report.
+if(Test-Path -LiteralPath $report){
+  if($result -notmatch '(?m)^native_original_masstagger_bootstrap=true\s*$' -or
+     $result -notmatch '(?m)^native_original_context_executed=Manage scripts\s*$' -or
+     $result -notmatch '(?m)^write_result=original_ui_returned\s*$'){
+    throw 'Refusing to remove unqualified native bootstrap report'
+  }
+  Remove-Item -LiteralPath $report -Force
+  Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_VERIFIED_REPORT_CLEANED=PASS'
+}
+
+){
+              Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_NEW_WINDOW=' + $newTitle)
+            }else{
+              Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_NEW_WINDOW=<redacted>'
+            }
+          }
           $updatedControls=@([NativeOriginalMasstaggerBootstrapUI]::Controls($dialog,$FoobarPid))
           Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL_COUNT=' + $updatedControls.Count)
           foreach($item in $updatedControls){Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL=' + $item)}
