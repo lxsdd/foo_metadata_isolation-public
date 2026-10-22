@@ -28,7 +28,9 @@ jobs:
       - name: Package and verify exact candidate
         shell: pwsh
         run: ./ci/package.ps1 -BuildRoot . -ComponentId foo_metadata_isolation
-      - uses: actions/upload-artifact@v7
+      - name: Upload candidate (held pending separate redistribution permission)
+        if: false # No public native component Actions artifact; build and validation remain active
+        uses: actions/upload-artifact@v7
         with:
           name: foo_metadata_isolation-candidate-${{ github.sha }}
           path: candidate/*
