@@ -137,17 +137,38 @@ try {
             Start-Sleep -Milliseconds 250
         }
         if (-not $discoggerReady) { throw 'Original host did not load the modified Discogger DLL' }
+        # A loaded DLL does not mean its asynchronous startup CONFIG.load()
+        # has completed. The original Discogger GUI host test waits before
+        # checking this SQLite side effect; use a bounded non-mutating poll.
         $configReady = $false
-        foreach($profileRoot in @($portable,(Join-Path $portable 'profile'))) {
-            $actualDb = Join-Path $profileRoot 'configuration/foo_discogger.dll.db'
-            if(Test-Path -LiteralPath $actualDb -PathType Leaf) {
-                $sig = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($actualDb),0,16)
-                if($sig -cne ("SQLite format 3"+[char]0)) { throw 'Modified Discogger host initialization generated an invalid SQLite config' }
-                $configReady = $true
+        for($configPoll=0;$configPoll -lt 80;$configPoll++){
+            $process.Refresh()
+            if($process.HasExited){throw 'Two-component foobar exited during Discogger initialization'}
+            foreach($profileRoot in @($portable,(Join-Path $portable 'profile'))) {
+                $actualDb = Join-Path $profileRoot 'configuration/foo_discogger.dll.db'
+                if(Test-Path -LiteralPath $actualDb -PathType Leaf) {
+                    $dbStream = $null
+                    try {
+                        $dbStream=[IO.File]::Open($actualDb,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+                        if($dbStream.Length -ge 16) {
+                            $head=New-Object byte[] 16
+                            if($dbStream.Read($head,0,16) -eq 16 -and
+                                [Text.Encoding]::ASCII.GetString($head) -ceq ("SQLite format 3"+[char]0)) {
+                                $configReady=$true
+                            }
+                        }
+                    } catch [IO.IOException] {
+                        # Writer still publishing the runner-local SQLite DB.
+                    } finally {
+                        if($null -ne $dbStream){$dbStream.Dispose()}
+                    }
+                }
             }
+            if($configReady){break}
+            Start-Sleep -Milliseconds 250
         }
         if(-not $configReady) {
-            throw 'Modified Discogger did not initialize its portable-profile SQLite configuration'
+            throw 'Modified Discogger failed bounded portable SQLite initialization; no co-load PASS'
         }
         Write-Host "MODIFIED_DISCOGGER_AND_METADATA_ISOLATION_HOST_COLOAD_$Architecture=PASS"
     }
