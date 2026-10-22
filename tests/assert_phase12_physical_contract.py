@@ -45,7 +45,11 @@ for marker in (
     "handle_create(canonical_path, 0)",
     "unique_physical_sources.insert(key)",
     "std::filesystem::equivalent(",
-    "canonical_case_lookup.emplace(folded_native, native)",
+    "canonical_case_lookup.emplace(unicode_native, native)",
+    "MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS",
+    "CompareStringOrdinal(",
+    "canonical_native_lookup.find(*original)",
+    "same_physical_file(native, previously_mapped->second)",
     "Case-only source alias could not be verified",
 ):
     assert marker in MAPPER
@@ -55,6 +59,9 @@ assert "for (const auto& existing : result.handles)" not in MAPPER
 assert "/metadata-isolation-probe-map-physical-case-alias" in DIAGNOSTICS
 assert "map_physical_with_case_alias" in DIAGNOSTICS
 assert "scenario='case-alias'" in ISOLATED_HOST_RUNTIME
+assert "scenario unicode-case-alias" in ISOLATED_HOST_RUNTIME
+assert "/metadata-isolation-probe-map-physical-unicode-case-alias" in DIAGNOSTICS
+assert "map_physical_with_unicode_case_alias" in DIAGNOSTICS
 assert '/metadata-isolation-probe-map-physical-remote-first' in DIAGNOSTICS
 # The remote-first scenario is launched from the original isolated Win32/x64
 # host script, not the separate Phase-12 six-source format matrix.

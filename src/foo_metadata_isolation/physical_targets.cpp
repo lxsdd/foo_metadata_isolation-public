@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "physical_targets.h"
 
+#include <climits>
 #include <filesystem>
 #include <map>
 #include <set>
@@ -23,6 +24,50 @@ struct physical_source_less {
     }
 };
 
+// Windows path case equivalence is Unicode-aware, not ASCII byte folding.
+// Convert only valid foobar UTF-8 paths to Windows UTF-16. An invalid path
+// fails closed before any physical-writing target is constructed.
+std::wstring unicode_path_from_utf8(const std::string& utf8) {
+    if (utf8.empty() || utf8.size() > INT_MAX) {
+        throw pfc::exception("Physical source has an invalid UTF-8 path length.");
+    }
+    const int length = static_cast<int>(utf8.size());
+    const int needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                                          utf8.data(), length, nullptr, 0);
+    if (needed == 0) {
+        throw pfc::exception("Physical source has an invalid UTF-8 path.");
+    }
+    std::wstring wide(static_cast<size_t>(needed), L'\0');
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                            utf8.data(), length, wide.data(), needed) != needed) {
+        throw pfc::exception("Physical source UTF-8 conversion failed.");
+    }
+    return wide;
+}
+
+struct windows_path_case_less {
+    bool operator()(const std::wstring& left, const std::wstring& right) const {
+        const int comparison = CompareStringOrdinal(
+            left.c_str(), static_cast<int>(left.size()),
+            right.c_str(), static_cast<int>(right.size()), TRUE);
+        // Both values passed strict UTF-8 decoding; a failed comparison must
+        // never misrepresent distinct paths as equivalent.
+        if (comparison == 0) throw pfc::exception("Windows path comparison failed.");
+        return comparison == CSTR_LESS_THAN;
+    }
+};
+
+bool same_physical_file(const std::string& native, const std::string& previous) {
+    const std::u8string current_utf8(native.begin(), native.end());
+    const std::u8string previous_utf8(previous.begin(), previous.end());
+    std::error_code error;
+    const bool equal = std::filesystem::equivalent(
+        std::filesystem::path(current_utf8),
+        std::filesystem::path(previous_utf8),
+        error);
+    return !error && equal;
+}
+
 void reject_target(
     physical_target_map& result,
     const char* path,
@@ -43,10 +88,12 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
     // O(N log N) distinct-source deduplication, rather than N linear scans
     // through previously created foobar handles.
     std::set<std::string, physical_source_less> unique_physical_sources;
-    // A filesystem path comparison may distinguish different spellings of
-    // one Windows file. Check case-only aliases by actual file identity;
-    // never collapse genuinely separate case-sensitive files on spelling alone.
-    std::map<std::string, std::string> canonical_case_lookup;
+    // Filesystem and Windows ordinal Unicode case rules are not identical.
+    // Preserve the old foobar-aware comparator, while ensuring *every*
+    // non-byte-identical duplicate proves actual file identity. This also
+    // handles the rare case-sensitive Windows directory without writing.
+    std::map<std::string, std::string, physical_source_less> canonical_native_lookup;
+    std::map<std::wstring, std::string, windows_path_case_less> canonical_case_lookup;
     for (const auto& item : selected) {
         const char* source_path = item->get_path();
         try {
@@ -70,45 +117,43 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
             }
 
             const std::string key(canonical_path.c_str());
-            if (unique_physical_sources.find(key) == unique_physical_sources.end()) {
-                // A case-only alias is not necessarily the same file on a
-                // case-sensitive Windows directory. Query physical identity
-                // only for these rare collisions, preserving logarithmic
-                // in-memory lookup for a large collection of distinct files.
-                const std::string native(native_path.c_str());
-                std::string folded_native = native;
-                for (char& unit : folded_native) {
-                    const unsigned char byte = static_cast<unsigned char>(unit);
-                    if (byte >= 'A' && byte <= 'Z') {
-                        unit = static_cast<char>(byte - 'A' + 'a');
-                    }
-                }
-                const auto collision = canonical_case_lookup.find(folded_native);
-                if (collision != canonical_case_lookup.end()) {
-                    std::error_code error;
-                    const std::u8string current_utf8(native.begin(), native.end());
-                    const std::u8string previous_utf8(
-                        collision->second.begin(), collision->second.end());
-                    const bool same_file = std::filesystem::equivalent(
-                        std::filesystem::path(current_utf8),
-                        std::filesystem::path(previous_utf8),
-                        error);
-                    if (error || !same_file) {
+            const std::string native(native_path.c_str());
+            const auto original = unique_physical_sources.find(key);
+            if (original != unique_physical_sources.end()) {
+                // The foobar-aware comparator can equate *different strings*.
+                // Never accept that as proof the underlying physical file
+                // is the same on a case-sensitive Windows directory.
+                if (*original != key) {
+                    const auto previously_mapped = canonical_native_lookup.find(*original);
+                    if (previously_mapped == canonical_native_lookup.end() ||
+                        !same_physical_file(native, previously_mapped->second)) {
                         reject_target(
                             result, source_path,
-                            "Case-only source alias could not be verified as the same physical file.");
+                            "Equivalent source path could not be verified as the same physical file.");
                     }
-                    // Same file: already present; ambiguous/different file:
-                    // incomplete selection blocks every delegated write.
-                    continue;
                 }
-                // Create and record a real physical handle before marking its
-                // canonical source as seen. A failed handle_create must not
-                // silently suppress a later valid selected track.
-                result.handles.add_item(metadb::get()->handle_create(canonical_path, 0));
-                unique_physical_sources.insert(key);
-                canonical_case_lookup.emplace(folded_native, native);
+                continue;
             }
+
+            const std::wstring unicode_native = unicode_path_from_utf8(native);
+            const auto collision = canonical_case_lookup.find(unicode_native);
+            if (collision != canonical_case_lookup.end()) {
+                if (!same_physical_file(native, collision->second)) {
+                    reject_target(
+                        result, source_path,
+                        "Case-only source alias could not be verified as the same physical file.");
+                }
+                // Proven same file: already mapped. Ambiguous/different file:
+                // rejected selection blocks all delegated physical writes.
+                continue;
+            }
+
+            // Add the handle before marking source as mapped. Failed handle
+            // construction must never conceal a later valid selection.
+            result.handles.add_item(metadb::get()->handle_create(canonical_path, 0));
+            unique_physical_sources.insert(key);
+            canonical_native_lookup.emplace(key, native);
+            canonical_case_lookup.emplace(unicode_native, native);
         } catch (const std::exception& error) {
             reject_target(result, source_path, error.what());
         }

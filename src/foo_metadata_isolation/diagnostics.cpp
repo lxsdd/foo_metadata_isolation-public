@@ -41,6 +41,7 @@ enum class probe_mode {
     map_physical,
     map_physical_with_duplicate,
     map_physical_with_case_alias,
+    map_physical_with_unicode_case_alias,
     map_physical_with_remote,
     map_physical_with_remote_first,
     map_all_handles_physical,
@@ -221,6 +222,7 @@ bool parse_probe_mode(const char* token, probe_mode& mode) {
         { "/metadata-isolation-probe-map-physical", probe_mode::map_physical },
         { "/metadata-isolation-probe-map-physical-duplicate", probe_mode::map_physical_with_duplicate },
         { "/metadata-isolation-probe-map-physical-case-alias", probe_mode::map_physical_with_case_alias },
+        { "/metadata-isolation-probe-map-physical-unicode-case-alias", probe_mode::map_physical_with_unicode_case_alias },
         { "/metadata-isolation-probe-map-physical-remote", probe_mode::map_physical_with_remote },
         { "/metadata-isolation-probe-map-physical-remote-first", probe_mode::map_physical_with_remote_first },
         { "/metadata-isolation-probe-map-all-handles-physical", probe_mode::map_all_handles_physical },
@@ -1750,6 +1752,7 @@ public:
             } else if (m_mode == probe_mode::map_physical ||
                 m_mode == probe_mode::map_physical_with_duplicate ||
                 m_mode == probe_mode::map_physical_with_case_alias ||
+                m_mode == probe_mode::map_physical_with_unicode_case_alias ||
                 m_mode == probe_mode::map_physical_with_remote ||
                 m_mode == probe_mode::map_physical_with_remote_first ||
                 m_mode == probe_mode::map_all_handles_physical ||
@@ -1768,6 +1771,22 @@ public:
                     }
                     alias.replace(alias.size() - sizeof(leaf) + 1, sizeof(leaf) - 1,
                                   "TRACK-01.MP3");
+                    report << "mapping_alias_path=" << alias.c_str() << "\n";
+                    mapped_items.add_item(metadb::get()->handle_create(alias.c_str(), 0));
+                } else if (m_mode == probe_mode::map_physical_with_unicode_case_alias) {
+                    // On normal Windows filesystems the runner-created
+                    // directory Ähre and ähre designate the same physical
+                    // directory. Check actual Unicode case handling, without
+                    // touching real user music or normal component builds.
+                    std::string alias(path);
+                    const std::string upper = "\xC3\x84" "hre";
+                    const std::string lower = "\xC3\xA4" "hre";
+                    const size_t found = alias.rfind(upper);
+                    if (found == std::string::npos ||
+                        !alias.ends_with("track-01.mp3")) {
+                        throw pfc::exception("Unicode case-alias probe requires Ähre fixture.");
+                    }
+                    alias.replace(found, upper.size(), lower);
                     report << "mapping_alias_path=" << alias.c_str() << "\n";
                     mapped_items.add_item(metadb::get()->handle_create(alias.c_str(), 0));
                 } else if (m_mode == probe_mode::map_physical_with_remote) {

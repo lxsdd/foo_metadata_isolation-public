@@ -314,6 +314,25 @@ try {
     }
     Write-Host "REAL_HOST_PHYSICAL_TARGET_MAPPING_MATRIX_$Architecture=PASS"
 
+    # Test a genuinely non-ASCII Windows directory name in the original
+    # foobar host. The physical media is an independent synthetic copy, and
+    # the read-only report plus SHA baseline are checked by the same oracle.
+    $unicodeDir = Join-Path $root (([string][char]0x00C4) + 'hre')
+    $null = New-Item -ItemType Directory -Path $unicodeDir
+    $unicodeSource = Join-Path $unicodeDir 'track-01.mp3'
+    $unicodeBefore = Join-Path $unicodeDir 'track-01.mp3.before'
+    Copy-Item -LiteralPath $source -Destination $unicodeSource
+    Copy-Item -LiteralPath $unicodeSource -Destination $unicodeBefore
+    $source = $unicodeSource
+    $before = $unicodeBefore
+    $unicodeReport = Invoke-IsolatedProbe '/metadata-isolation-probe-map-physical-unicode-case-alias'
+    & python tests/assert_physical_target_mapping.py $unicodeReport $unicodeBefore $unicodeSource --scenario unicode-case-alias
+    if ($LASTEXITCODE -ne 0) { throw 'Native Unicode case-alias physical mapping failed' }
+    Remove-Item -LiteralPath $unicodeReport -Force
+    $source = Join-Path $root 'track-01.mp3'
+    $before = Join-Path $root 'track-01.mp3.before'
+    Write-Host "REAL_HOST_PHYSICAL_UNICODE_CASE_ALIAS_$Architecture=PASS"
+
     # A separate source-only fixture matrix exercises real path comparison
     # and first-appearance order for 111 distinct local physical files.
     # Copies never leave RUNNER_TEMP and none of the mapper actions writes.

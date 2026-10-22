@@ -13,6 +13,7 @@ CASES = {
     "single": {"extra": 0, "target": 1, "rejected": 0, "complete": "true"},
     "duplicate": {"extra": 1, "target": 1, "rejected": 0, "complete": "true"},
     "case-alias": {"extra": 1, "target": 1, "rejected": 0, "complete": "true"},
+    "unicode-case-alias": {"extra": 1, "target": 1, "rejected": 0, "complete": "true"},
     "all-subsongs": {"extra": 0, "target": 1, "rejected": 0, "complete": "true"},
     "remote-rejected": {"extra": 1, "target": 1, "rejected": 1, "complete": "false"},
     "remote-first-rejected": {"extra": 0, "target": 1, "rejected": 1, "complete": "false"},
@@ -77,6 +78,11 @@ def main() -> None:
         alias = data.get("mapping_alias_path", "")
         require(alias.endswith("/TRACK-01.MP3") or alias.endswith("\\TRACK-01.MP3"),
                 "The genuine distinct-case alias was not exercised")
+    elif options.scenario == "unicode-case-alias":
+        alias = data.get("mapping_alias_path", "").replace("\\", "/")
+        require(alias.endswith("/ähre/track-01.mp3"),
+                "Actual UTF-8 case-variant Windows source path was not exercised")
+        require(fixture.parent.name == "Ähre", "Unexpected Unicode source fixture directory")
     else:
         require("mapping_alias_path" not in data, "Unexpected alias evidence")
     if options.scenario == "many-distinct":
