@@ -2060,7 +2060,7 @@ static void mi_original_masstagger_trace(const char* phase) {
 // not part of release, candidate, or ordinary foobar component builds.
 // This routes through the ORIGINAL third-party SDK context command, never
 // imitates its dialog or implements its metadata writer.
-class original_masstagger_native_ui_bootstrap final : public initquit {
+class original_masstagger_native_ui_bootstrap : public initquit {
 public:
     void on_init() override {
         char actions[8] = {};
