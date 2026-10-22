@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <set>
 #include <sstream>
@@ -894,7 +896,8 @@ public:
             if (filter_matches(m_rows[index], filter)) visible.push_back(index);
         }
 
-        const int sort_column = std::clamp<int>(g_cfg_audit_sort_col, 0, column_count - 1);
+        const int sort_column = static_cast<int>(std::clamp<std::int64_t>(
+            g_cfg_audit_sort_col, 0, column_count - 1));
         const int sort_direction = g_cfg_audit_sort_dir < 0 ? -1 : 1;
         std::stable_sort(
             visible.begin(),
@@ -1068,11 +1071,28 @@ public:
     }
 
     void restore_geometry() {
-        const int saved_x = g_cfg_audit_win_x;
-        const int saved_y = g_cfg_audit_win_y;
-        if (saved_x < 0 || saved_y < 0) return;
-        int width = MulDiv(std::max<int>(g_cfg_audit_win_w, 760), static_cast<int>(m_dpi), 96);
-        int height = MulDiv(std::max<int>(g_cfg_audit_win_h, 440), static_cast<int>(m_dpi), 96);
+        // (-1,-1) is the *pair* used by the untouched preference defaults.
+        // Negative coordinates individually are valid for secondary monitors
+        // placed left of or above the primary display.
+        const std::int64_t raw_x = g_cfg_audit_win_x;
+        const std::int64_t raw_y = g_cfg_audit_win_y;
+        if (raw_x == -1 && raw_y == -1) return;
+
+        // cfg_int persists 64-bit values; Win32 RECT/MulDiv consume 32-bit
+        // coordinates. Bound corrupted preferences before narrowing/scaling.
+        const auto bounded_position = [](std::int64_t position) {
+            return static_cast<int>(std::clamp<std::int64_t>(
+                position, std::numeric_limits<int>::min() / 2,
+                std::numeric_limits<int>::max() / 2));
+        };
+        const int saved_x = bounded_position(raw_x);
+        const int saved_y = bounded_position(raw_y);
+        const int saved_width = static_cast<int>(std::clamp<std::int64_t>(
+            g_cfg_audit_win_w, 760, 32768));
+        const int saved_height = static_cast<int>(std::clamp<std::int64_t>(
+            g_cfg_audit_win_h, 440, 32768));
+        int width = MulDiv(saved_width, static_cast<int>(m_dpi), 96);
+        int height = MulDiv(saved_height, static_cast<int>(m_dpi), 96);
         RECT desired = {saved_x, saved_y, saved_x + width, saved_y + height};
         HMONITOR monitor = MonitorFromRect(&desired, MONITOR_DEFAULTTONEAREST);
         MONITORINFO info = {sizeof(info)};
