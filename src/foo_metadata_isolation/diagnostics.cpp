@@ -40,6 +40,7 @@ enum class probe_mode {
     physical_raw_cue_patch,
     map_physical,
     map_physical_with_duplicate,
+    map_physical_with_case_alias,
     map_physical_with_remote,
     map_physical_with_remote_first,
     map_all_handles_physical,
@@ -219,6 +220,7 @@ bool parse_probe_mode(const char* token, probe_mode& mode) {
         { "/metadata-isolation-probe-physical-raw-cue-patch", probe_mode::physical_raw_cue_patch },
         { "/metadata-isolation-probe-map-physical", probe_mode::map_physical },
         { "/metadata-isolation-probe-map-physical-duplicate", probe_mode::map_physical_with_duplicate },
+        { "/metadata-isolation-probe-map-physical-case-alias", probe_mode::map_physical_with_case_alias },
         { "/metadata-isolation-probe-map-physical-remote", probe_mode::map_physical_with_remote },
         { "/metadata-isolation-probe-map-physical-remote-first", probe_mode::map_physical_with_remote_first },
         { "/metadata-isolation-probe-map-all-handles-physical", probe_mode::map_all_handles_physical },
@@ -1747,6 +1749,7 @@ public:
                 }
             } else if (m_mode == probe_mode::map_physical ||
                 m_mode == probe_mode::map_physical_with_duplicate ||
+                m_mode == probe_mode::map_physical_with_case_alias ||
                 m_mode == probe_mode::map_physical_with_remote ||
                 m_mode == probe_mode::map_physical_with_remote_first ||
                 m_mode == probe_mode::map_all_handles_physical ||
@@ -1754,6 +1757,19 @@ public:
                 metadb_handle_list mapped_items = m_items;
                 if (m_mode == probe_mode::map_physical_with_duplicate) {
                     mapped_items.add_item(metadb::get()->handle_create(path, 0));
+                } else if (m_mode == probe_mode::map_physical_with_case_alias) {
+                    // The same disposable Windows file must not become two
+                    // physical write targets solely due to path letter casing.
+                    // Exercise the production filesystem-aware set comparator.
+                    std::string alias(path);
+                    constexpr char leaf[] = "track-01.mp3";
+                    if (!alias.ends_with(leaf)) {
+                        throw pfc::exception("Case-alias probe requires track-01.mp3 fixture");
+                    }
+                    alias.replace(alias.size() - sizeof(leaf) + 1, sizeof(leaf) - 1,
+                                  "TRACK-01.MP3");
+                    report << "mapping_alias_path=" << alias << "\n";
+                    mapped_items.add_item(metadb::get()->handle_create(alias.c_str(), 0));
                 } else if (m_mode == probe_mode::map_physical_with_remote) {
                     mapped_items.add_item(metadb::get()->handle_create(
                         "http://127.0.0.1/metadata-isolation-unsupported.mp3", 0));

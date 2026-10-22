@@ -12,6 +12,7 @@ from pathlib import Path
 CASES = {
     "single": {"extra": 0, "target": 1, "rejected": 0, "complete": "true"},
     "duplicate": {"extra": 1, "target": 1, "rejected": 0, "complete": "true"},
+    "case-alias": {"extra": 1, "target": 1, "rejected": 0, "complete": "true"},
     "all-subsongs": {"extra": 0, "target": 1, "rejected": 0, "complete": "true"},
     "remote-rejected": {"extra": 1, "target": 1, "rejected": 1, "complete": "false"},
     "remote-first-rejected": {"extra": 0, "target": 1, "rejected": 1, "complete": "false"},
@@ -72,6 +73,12 @@ def main() -> None:
         ("write_result", "map_only"),
     ):
         require(data.get(key) == str(value), f"{options.scenario}: wrong {key}")
+    if options.scenario == "case-alias":
+        alias = data.get("mapping_alias_path", "")
+        require(alias.endswith("/TRACK-01.MP3") or alias.endswith("\\TRACK-01.MP3"),
+                "The genuine distinct-case alias was not exercised")
+    else:
+        require("mapping_alias_path" not in data, "Unexpected alias evidence")
     if options.scenario == "many-distinct":
         # The real SDK mapper returns the 111 unique source handles in the
         # selection's original descending order, despite using a sorted set

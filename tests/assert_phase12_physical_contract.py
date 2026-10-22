@@ -47,6 +47,11 @@ for marker in (
 ):
     assert marker in MAPPER
 assert "for (const auto& existing : result.handles)" not in MAPPER
+# The canonicalized filesystem-aware comparator must collapse distinct-case
+# names for one local Windows file in the original host, not only in a mock.
+assert "/metadata-isolation-probe-map-physical-case-alias" in DIAGNOSTICS
+assert "map_physical_with_case_alias" in DIAGNOSTICS
+assert "scenario='case-alias'" in ISOLATED_HOST_RUNTIME
 assert '/metadata-isolation-probe-map-physical-remote-first' in DIAGNOSTICS
 # The remote-first scenario is launched from the original isolated Win32/x64
 # host script, not the separate Phase-12 six-source format matrix.
