@@ -47,6 +47,24 @@ jobs:
           path: .ci_installer
           persist-credentials: false
       - uses: microsoft/setup-msbuild@v2
+      - name: Parse original Masstagger test scripts before building both architectures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($script in @(
+            'tests/run_real_masstagger_193_e2e.ps1',
+            'tests/inspect_real_masstagger_manage_scripts.ps1',
+            'tests/assert_real_original_masstagger_bootstrap.ps1'
+          )){
+            $tokens=$null
+            $parseErrors=$null
+            $verified=(Resolve-Path -LiteralPath $script).Path
+            [void][System.Management.Automation.Language.Parser]::ParseFile($verified,[ref]$tokens,[ref]$parseErrors)
+            if(@($parseErrors).Count -ne 0){
+              throw "Masstagger test PowerShell syntax invalid in $script (errors=$(@($parseErrors).Count))"
+            }
+          }
+          Write-Host 'MASSTAGGER_ALL_REAL_HOST_TEST_SCRIPTS_PARSE=PASS'
       - name: Build Metadata Isolation with the reviewed SDK and no distributable artifacts
         shell: pwsh
         run: |
