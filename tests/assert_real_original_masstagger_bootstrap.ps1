@@ -51,6 +51,7 @@ Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 using System.Runtime.InteropServices;
 public static class NativeOriginalMasstaggerBootstrapUI {
   delegate bool Callback(IntPtr hwnd, IntPtr ignored);
@@ -229,6 +230,11 @@ public static class NativeOriginalMasstaggerBootstrapUI {
       // in a disposable runner session. Never click original Run or any file.
       mouse_event(0x0002,0,0,0,UIntPtr.Zero);
       mouse_event(0x0004,0,0,0,UIntPtr.Zero);
+      // mouse_event enqueues Windows input. Immediately restoring the pointer
+      // can move it before the target menu processes LEFTUP (observed native
+      // Win32 flake: original modal never opened). Keep it over the *already*
+      // validated unique menu item for a bounded dispatch interval.
+      Thread.Sleep(220);
     }finally {
       SetCursorPos(previous.X,previous.Y);
     }
@@ -333,6 +339,7 @@ try{
       ([NativeOriginalMasstaggerBootstrapUI]::Titles($FoobarPid) -join ';'))
     Write-Host 'MASSTAGGER_GENUINE_BOOTSTRAP_UI=PENDING_NO_ORIGINAL_WINDOW'
   }else{
+    $originalRunSent=$false
     $controls=[NativeOriginalMasstaggerBootstrapUI]::Controls($dialog,$FoobarPid)
     Write-Host ('MASSTAGGER_GENUINE_BOOTSTRAP_UI_CONTROL_COUNT=' + $controls.Count)
     foreach($control in $controls){Write-Host ('MASSTAGGER_GENUINE_BOOTSTRAP_UI_CONTROL=' + $control)}
@@ -360,13 +367,19 @@ try{
            [NativeOriginalMasstaggerBootstrapUI]::DispatchOriginalSetValueAction($dialog,$FoobarPid)){
           # Verify the result of the exact original Set value menu click.
           # Observe only window titles and redacted child control labels.
-          Start-Sleep -Milliseconds 650
+          # The original WTL/modal dispatcher runs asynchronously. Observe
+          # the *genuine* PID-owned modal before any field input or Run.
+          $configuration=[IntPtr]::Zero
+          for($modalPoll=0;$modalPoll -lt 35;$modalPoll++){
+            $configuration=[NativeOriginalMasstaggerBootstrapUI]::ExactTitle($FoobarPid,'Set Value')
+            if($configuration -ne [IntPtr]::Zero){break}
+            Start-Sleep -Milliseconds 100
+          }
           $titles=@([NativeOriginalMasstaggerBootstrapUI]::Titles($FoobarPid))
           Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_CONFIGURATION_TOP_LEVEL=' + ($titles -join ';'))
           $updatedControls=@([NativeOriginalMasstaggerBootstrapUI]::Controls($dialog,$FoobarPid))
           Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL_COUNT=' + $updatedControls.Count)
           foreach($entry in $updatedControls){Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL=' + $entry)}
-          $configuration=[NativeOriginalMasstaggerBootstrapUI]::ExactTitle($FoobarPid,'Set Value')
           if($configuration -ne [IntPtr]::Zero){
             # Genuine original third-party modal. Inspect only class names and
             # bounded safe static/button captions; never inspect edit contents.
@@ -393,6 +406,7 @@ try{
               Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL_SUBMITTED=PASS_SYNTHETIC_ONLY'
               if($dryRun -ceq 'PASS_SYNTHETIC_FIELD_VALUE_ENTERED_OK_CLICKED'){
                 if([NativeOriginalMasstaggerBootstrapUI]::ClickOriginalRun($dialog,$FoobarPid)){
+                  $originalRunSent=$true
                   Write-Host 'MASSTAGGER_ORIGINAL_GENUINE_RUN_CLICK=PASS_SENT'
                   # Keep genuine original Manage scripts UI alive while the
                   # third-party action may be applying the synthetic tag.
@@ -413,7 +427,14 @@ try{
           }else{
             Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL=PENDING_NOT_OBSERVED'
           }
-          Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=' + $(if($SyntheticPhysicalCommit){'REAL_ORIGINAL_UI_RUN_SENT_POSTIMAGE_ORACLE_REQUIRED'}else{'CANCEL_ONLY'}))
+          # Never claim original Run was sent when no modal appeared or when
+          # its bounded native button lookup failed. Independent oracle is
+          # still mandatory for the positive physical-write acceptance.
+          $actionState=if($SyntheticPhysicalCommit){
+            if($originalRunSent){'REAL_ORIGINAL_UI_RUN_SENT_POSTIMAGE_ORACLE_REQUIRED'}
+            else{'NOT_SENT_NO_VERIFIED_ORIGINAL_RUN'}
+          }else{'CANCEL_ONLY'}
+          Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=' + $actionState)
           # No field text is entered here; the native action's configuration
           # modal is deliberately closed without accepting or running it.
           [void][NativeOriginalMasstaggerBootstrapUI]::CloseKnown($FoobarPid,'Set value')
