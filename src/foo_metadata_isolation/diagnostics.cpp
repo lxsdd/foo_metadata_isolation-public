@@ -2053,7 +2053,7 @@ static void mi_original_masstagger_trace(const char* phase) {
     if (output == INVALID_HANDLE_VALUE) return;
     DWORD written = 0;
     WriteFile(output, phase, static_cast<DWORD>(std::strlen(phase)), &written, nullptr);
-    WriteFile(output, "\\n", 1, &written, nullptr);
+    WriteFile(output, "\n", 1, &written, nullptr);
     CloseHandle(output);
 }
 // CI ONLY. Compiled exclusively with the isolated genuine-Masstagger workflow;
