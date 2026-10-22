@@ -4,7 +4,9 @@
 param(
   [Parameter(Mandatory)][int]$FoobarPid,
   [Parameter(Mandatory)][string]$Executable,
-  [Parameter(Mandatory)][string]$FixturePath
+  [Parameter(Mandatory)][string]$FixturePath,
+  [switch]$SyntheticPhysicalCommit,
+  [string]$BeforeFixturePath
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -27,6 +29,17 @@ if($hostProcess.ProcessName -cne 'foobar2000' -or
   throw 'Native bootstrap host identity mismatch'
 }
 $before=(Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+if($SyntheticPhysicalCommit){
+  if([string]::IsNullOrWhiteSpace($BeforeFixturePath)){throw 'Missing synthetic baseline for physical UI test'}
+  $baselinePath=[IO.Path]::GetFullPath($BeforeFixturePath)
+  if(-not $baselinePath.StartsWith($root,[StringComparison]::OrdinalIgnoreCase) -or
+     [IO.Path]::GetDirectoryName($baselinePath) -cne [IO.Path]::GetDirectoryName($source) -or
+     [IO.Path]::GetFileName($baselinePath) -cne 'track-01.before' -or
+     -not (Test-Path -LiteralPath $baselinePath) -or
+     (Get-FileHash -LiteralPath $baselinePath -Algorithm SHA256).Hash -cne $before){
+    throw 'Refusing unverified synthetic-only Masstagger physical UI baseline'
+  }
+}
 $report=$source+'.metadata-isolation-probe.txt'
 if(Test-Path -LiteralPath $report){
   # The fixture was verified absent before foobar launch; on a fast host,
@@ -231,7 +244,7 @@ public static class NativeOriginalMasstaggerBootstrapUI {
     SendMessageGetText(edit,0x000D,new IntPtr(text.Capacity),text);
     return String.Equals(text.ToString(),expected,StringComparison.Ordinal);
   }
-  public static string ConfigureSyntheticAndCancel(IntPtr root,int pid){
+  public static string ConfigureSyntheticAndChoose(IntPtr root,int pid,bool commit){
     uint p;GetWindowThreadProcessId(root,out p);
     if(root==IntPtr.Zero||p!=(uint)pid||!IsWindowVisible(root)||
        Caption(root)!="Set Value")
@@ -258,14 +271,33 @@ public static class NativeOriginalMasstaggerBootstrapUI {
       return "PENDING_FIELD_VALUE_PARENT_NOT_VERIFIED";
     // CI-only synthetic UI input, never a private preset, filename or tag.
     const string name="COMMENT";
-    const string data="MI_SYNTHETIC_MASSTAGGER_CANCEL_193";
+    string data=commit?"MI_SYNTHETIC_MASSTAGGER_REAL_UI_193":"MI_SYNTHETIC_MASSTAGGER_CANCEL_193";
     if(SendMessageSetText(field,0x000C,IntPtr.Zero,name)==IntPtr.Zero||
        SendMessageSetText(value,0x000C,IntPtr.Zero,data)==IntPtr.Zero||
        !ExactEditText(field,name)||!ExactEditText(value,data))
       return "PENDING_ORIGINAL_MODAL_TEXT_NOT_CONFIRMED";
-    if(!PostMessage(cancel[0],0x00F5,IntPtr.Zero,IntPtr.Zero))
-      throw new InvalidOperationException("Original synthetic Set Value Cancel did not receive click");
-    return "PASS_SYNTHETIC_FIELD_VALUE_ENTERED_CANCEL_CLICKED";
+    IntPtr action=commit?ok[0]:cancel[0];
+    if(!PostMessage(action,0x00F5,IntPtr.Zero,IntPtr.Zero))
+      throw new InvalidOperationException("Original synthetic Set Value action click failed");
+    return commit?"PASS_SYNTHETIC_FIELD_VALUE_ENTERED_OK_CLICKED":
+                  "PASS_SYNTHETIC_FIELD_VALUE_ENTERED_CANCEL_CLICKED";
+  }
+  public static bool ClickOriginalRun(IntPtr root,int pid){
+    uint p;GetWindowThreadProcessId(root,out p);
+    if(root==IntPtr.Zero||p!=(uint)pid||!IsWindowVisible(root)||
+       Caption(root).IndexOf("Masstagger",StringComparison.OrdinalIgnoreCase)<0)
+      throw new InvalidOperationException("Unverified original Masstagger Run target");
+    IntPtr run=IntPtr.Zero;int count=0;
+    EnumChildWindows(root,(h,x)=>{
+      uint owner;GetWindowThreadProcessId(h,out owner);
+      if(owner==(uint)pid&&Class(h)=="Button"&&Caption(h)=="Run"){
+        run=h;count++;
+      }
+      return true;},IntPtr.Zero);
+    if(count!=1)return false;
+    if(!PostMessage(run,0x00F5,IntPtr.Zero,IntPtr.Zero))
+      throw new InvalidOperationException("Cannot click verified original Masstagger Run");
+    return true;
   }
   public static void CancelOriginalPopup(IntPtr root,int pid){
     uint owner;GetWindowThreadProcessId(root,out owner);
@@ -341,9 +373,10 @@ try{
               Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_MODAL_CONTROL=' + $safeControl)
             }
             Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL=PASS_OPENED_READ_ONLY'
-            $dryRun=[NativeOriginalMasstaggerBootstrapUI]::ConfigureSyntheticAndCancel($configuration,$FoobarPid)
+            $dryRun=[NativeOriginalMasstaggerBootstrapUI]::ConfigureSyntheticAndChoose($configuration,$FoobarPid,$SyntheticPhysicalCommit.IsPresent)
             Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_SYNTHETIC_DRY_RUN=' + $dryRun)
-            if($dryRun -cne 'PASS_SYNTHETIC_FIELD_VALUE_ENTERED_CANCEL_CLICKED'){
+            $expectedUIResult=if($SyntheticPhysicalCommit){'PASS_SYNTHETIC_FIELD_VALUE_ENTERED_OK_CLICKED'}else{'PASS_SYNTHETIC_FIELD_VALUE_ENTERED_CANCEL_CLICKED'}
+            if($dryRun -cne $expectedUIResult){
               [NativeOriginalMasstaggerBootstrapUI]::Close($configuration,$FoobarPid)
             }
             for($closedPoll=0;$closedPoll -lt 25;$closedPoll++){
@@ -353,7 +386,18 @@ try{
             if([NativeOriginalMasstaggerBootstrapUI]::ExactTitle($FoobarPid,'Set Value') -ne [IntPtr]::Zero){
               throw 'Genuine disposable Set Value modal did not close without accepting edits'
             }
-            Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL_CANCEL=PASS'
+            if($SyntheticPhysicalCommit){
+              Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL_SUBMITTED=PASS_SYNTHETIC_ONLY'
+              if($dryRun -ceq 'PASS_SYNTHETIC_FIELD_VALUE_ENTERED_OK_CLICKED'){
+                if([NativeOriginalMasstaggerBootstrapUI]::ClickOriginalRun($dialog,$FoobarPid)){
+                  Write-Host 'MASSTAGGER_ORIGINAL_GENUINE_RUN_CLICK=PASS_SENT'
+                }else{
+                  Write-Host 'MASSTAGGER_ORIGINAL_GENUINE_RUN_CLICK=PENDING_NO_UNIQUE_RUN'
+                }
+              }
+            }else{
+              Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL_CANCEL=PASS'
+            }
           }else{
             Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL=PENDING_NOT_OBSERVED'
           }
@@ -379,8 +423,33 @@ try{
   if($dialog -ne [IntPtr]::Zero){
     [NativeOriginalMasstaggerBootstrapUI]::Close($dialog,$FoobarPid)
   }
-  if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $before){
-    throw 'Native original Masstagger UI read-only discovery modified embedded Cue MP3'
+  if($SyntheticPhysicalCommit){
+    $changed=$false
+    for($writePoll=0;$writePoll -lt 60;$writePoll++){
+      Start-Sleep -Milliseconds 200
+      try{$post=(Get-FileHash -LiteralPath $source -Algorithm SHA256 -ErrorAction Stop).Hash}catch{continue}
+      if($post -cne $before){$changed=$true;break}
+    }
+    if($changed){
+      Start-Sleep -Milliseconds 750
+      & python tests/assert_masstagger_embedded_cue_physical.py $baselinePath $source 'MI_SYNTHETIC_MASSTAGGER_REAL_UI_193'
+      if($LASTEXITCODE -ne 0){
+        throw 'Original Masstagger synthetic UI commit failed independent ID3/CUE/PRIV/MPEG oracle'
+      }
+      Write-Host 'MASSTAGGER_ORIGINAL_EMBEDDED_CUE_UI_PHYSICAL_NONNOOP=PASS_INDEPENDENT_ORACLE'
+    }else{
+      Write-Host 'MASSTAGGER_ORIGINAL_EMBEDDED_CUE_UI_PHYSICAL_NONNOOP=PENDING_NO_WRITE_OBSERVED'
+    }
+    # The preexisting plain/Cue CLI regression stages require the exact
+    # original disposable Cue. Restore only the SHA-verified runner fixture.
+    Copy-Item -LiteralPath $baselinePath -Destination $source -Force
+    if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $before){
+      throw 'Synthetic Cue fixture restore after genuine UI test failed'
+    }
+  }else{
+    if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $before){
+      throw 'Native original Masstagger UI read-only discovery modified embedded Cue MP3'
+    }
   }
   Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_CUE_MP3_BYTE_EXACT=PASS'
 }
