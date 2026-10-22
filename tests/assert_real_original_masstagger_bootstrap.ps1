@@ -315,6 +315,9 @@ public static class NativeOriginalMasstaggerBootstrapUI {
 
 $dialog=[IntPtr]::Zero
 $observed=$false
+# This exact-head CI test requires a genuine third-party physical write.
+# A no-op is a regression, not a green job with a PENDING marker.
+$physicalOraclePassed=$false
 try{
   for($i=0;$i -lt 90;$i++){
     $hostProcess.Refresh()
@@ -445,9 +448,10 @@ try{
       if($LASTEXITCODE -ne 0){
         throw 'Original Masstagger synthetic UI commit failed independent ID3/CUE/PRIV/MPEG oracle'
       }
+      $physicalOraclePassed=$true
       Write-Host 'MASSTAGGER_ORIGINAL_EMBEDDED_CUE_UI_PHYSICAL_NONNOOP=PASS_INDEPENDENT_ORACLE'
     }else{
-      Write-Host 'MASSTAGGER_ORIGINAL_EMBEDDED_CUE_UI_PHYSICAL_NONNOOP=PENDING_NO_WRITE_OBSERVED'
+      Write-Host 'MASSTAGGER_ORIGINAL_EMBEDDED_CUE_UI_PHYSICAL_NONNOOP=FAIL_NO_WRITE_OBSERVED'
     }
     # The preexisting plain/Cue CLI regression stages require the exact
     # original disposable Cue. Restore only the SHA-verified runner fixture.
@@ -512,10 +516,14 @@ if(@($phases | Where-Object {$_ -ceq 'SCHEDULED_MAIN_THREAD'}).Count -ne 1){
 
 # This is a narrow real third-party physical-write gate, not overall release
 # acceptance. It is PASS only after the independent ID3/CUE/PRIV/MPEG oracle.
-if($SyntheticPhysicalCommit -and $changed){
+if($SyntheticPhysicalCommit){
+  if(-not $physicalOraclePassed){
+    Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_POSITIVE_PHYSICAL_COMMIT=FAIL_NO_INDEPENDENT_ORACLE'
+    throw 'Original Masstagger embedded-CUE physical UI write regression: positive independent ID3/CUE/PRIV/MPEG oracle absent'
+  }
   Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_POSITIVE_PHYSICAL_COMMIT=PASS_INDEPENDENT_ORACLE'
 }else{
-  Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_POSITIVE_PHYSICAL_COMMIT=PENDING_EXPLICIT_UI_ACTION'
+  Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_POSITIVE_PHYSICAL_COMMIT=NOT_REQUESTED_READ_ONLY'
 }
 
 # The next, independently existing CLI/context-tree probe reuses the SAME
