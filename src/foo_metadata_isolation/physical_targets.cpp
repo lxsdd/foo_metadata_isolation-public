@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "physical_targets.h"
 
+#include <filesystem>
+#include <map>
 #include <set>
 #include <string>
 
@@ -41,6 +43,10 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
     // O(N log N) distinct-source deduplication, rather than N linear scans
     // through previously created foobar handles.
     std::set<std::string, physical_source_less> unique_physical_sources;
+    // A filesystem path comparison may distinguish different spellings of
+    // one Windows file. Check case-only aliases by actual file identity;
+    // never collapse genuinely separate case-sensitive files on spelling alone.
+    std::map<std::string, std::string> canonical_case_lookup;
     for (const auto& item : selected) {
         const char* source_path = item->get_path();
         try {
@@ -65,11 +71,40 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
 
             const std::string key(canonical_path.c_str());
             if (unique_physical_sources.find(key) == unique_physical_sources.end()) {
+                // A case-only alias is not necessarily the same file on a
+                // case-sensitive Windows directory. Query physical identity
+                // only for these rare collisions, preserving logarithmic
+                // in-memory lookup for a large collection of distinct files.
+                const std::string native(native_path.c_str());
+                std::string folded_native = native;
+                for (char& unit : folded_native) {
+                    const unsigned char byte = static_cast<unsigned char>(unit);
+                    if (byte >= 'A' && byte <= 'Z') {
+                        unit = static_cast<char>(byte - 'A' + 'a');
+                    }
+                }
+                const auto collision = canonical_case_lookup.find(folded_native);
+                if (collision != canonical_case_lookup.end()) {
+                    std::error_code error;
+                    const bool same_file = std::filesystem::equivalent(
+                        std::filesystem::u8path(native),
+                        std::filesystem::u8path(collision->second),
+                        error);
+                    if (error || !same_file) {
+                        reject_target(
+                            result, source_path,
+                            "Case-only source alias could not be verified as the same physical file.");
+                    }
+                    // Same file: already present; ambiguous/different file:
+                    // incomplete selection blocks every delegated write.
+                    continue;
+                }
                 // Create and record a real physical handle before marking its
                 // canonical source as seen. A failed handle_create must not
                 // silently suppress a later valid selected track.
                 result.handles.add_item(metadb::get()->handle_create(canonical_path, 0));
                 unique_physical_sources.insert(key);
+                canonical_case_lookup.emplace(folded_native, native);
             }
         } catch (const std::exception& error) {
             reject_target(result, source_path, error.what());

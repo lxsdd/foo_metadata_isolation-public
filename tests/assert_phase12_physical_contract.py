@@ -44,6 +44,9 @@ for marker in (
     "unique_physical_sources.find(key)",
     "handle_create(canonical_path, 0)",
     "unique_physical_sources.insert(key)",
+    "std::filesystem::equivalent(",
+    "canonical_case_lookup.emplace(folded_native, native)",
+    "Case-only source alias could not be verified",
 ):
     assert marker in MAPPER
 assert "for (const auto& existing : result.handles)" not in MAPPER
