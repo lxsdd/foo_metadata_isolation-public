@@ -91,7 +91,22 @@ try {
     $before=Join-Path $mediaDir 'track-01.before.mp3'
     Copy-Item -LiteralPath $plain -Destination $before
     $beforeHash=(Get-FileHash -LiteralPath $plain -Algorithm SHA256).Hash
-    $process=Start-Process -FilePath $exe -WorkingDirectory $portable -PassThru
+    # Prepare the disposable Cue BEFORE host startup: the CI-only initquit
+    # bootstrap runs inside original foobar and cannot see a late-created file.
+    $cueDir=Join-Path $root 'embedded-cue-masstagger'
+    [void](New-Item -ItemType Directory -Path $cueDir)
+    $cueSource=Join-Path $cueDir 'track-01.mp3'
+    & python tests/make_masstagger_embedded_duration_mp3.py $cueSource
+    if($LASTEXITCODE -ne 0){throw 'Embedded Cue synthetic fixture failed'}
+    $cueBefore=Join-Path $cueDir 'track-01.before'
+    Copy-Item -LiteralPath $cueSource -Destination $cueBefore
+    $cueSha=(Get-FileHash -LiteralPath $cueSource -Algorithm SHA256).Hash
+    $cueExpectedComment='MI_SYNTHETIC_CUE_PHYSICAL_193'    $env:MI_REAL_ORIGINAL_MASSTAGGER_UI_FILE=$cueSource
+    try {
+        $process=Start-Process -FilePath $exe -WorkingDirectory $portable -PassThru
+    } finally {
+        Remove-Item Env:MI_REAL_ORIGINAL_MASSTAGGER_UI_FILE -ErrorAction SilentlyContinue
+    }
     $seenMetadata=$false
     $seenMasstagger=$false
     for($i=0;$i -lt 85;$i++){
@@ -109,6 +124,12 @@ try {
         throw "Actual co-load failed: isolation=$seenMetadata masstagger=$seenMasstagger"
     }
     Write-Host ("REAL_HOST_MASSTAGGER_193_AND_METADATA_ISOLATION_COLOAD_$Architecture=PASS")
+    # Runtime evidence from the genuine original Masstagger context command,
+    # invoked by the CI-only native bootstrap on the isolated foobar main thread.
+    # The assertion independently verifies the disposable media is byte-exact.
+    & ./tests/assert_real_original_masstagger_bootstrap.ps1 -FoobarPid $process.Id -Executable $exe -FixturePath $cueSource
+    if($LASTEXITCODE -ne 0){throw 'Native original Masstagger UI bootstrap oracle failed'}
+
     if((Get-FileHash -LiteralPath $plain -Algorithm SHA256).Hash -cne $beforeHash){
         throw 'Actual two-component startup modified synthetic source'
     }
@@ -129,15 +150,6 @@ try {
     # foobar host BEFORE either Masstagger /tag command has run. This
     # isolates CLI dispatch from leftovers of the plain and Cue write tests.
     # No owner media, external configuration or credentials are used.
-    $cueDir=Join-Path $root 'embedded-cue-masstagger'
-    [void](New-Item -ItemType Directory -Path $cueDir)
-    $cueSource=Join-Path $cueDir 'track-01.mp3'
-    & python tests/make_masstagger_embedded_duration_mp3.py $cueSource
-    if($LASTEXITCODE -ne 0){throw 'Embedded Cue synthetic fixture failed'}
-    $cueBefore=Join-Path $cueDir 'track-01.before'
-    Copy-Item -LiteralPath $cueSource -Destination $cueBefore
-    $cueSha=(Get-FileHash -LiteralPath $cueSource -Algorithm SHA256).Hash
-    $cueExpectedComment='MI_SYNTHETIC_CUE_PHYSICAL_193'
     # Run the genuine third-party read-only Manage scripts UI probe BEFORE
     # the independent unsafe embedded-CUE /tag attempt. Earlier exact-head
     # Win32/x64 logs conclusively showed two write-blocked native modals
