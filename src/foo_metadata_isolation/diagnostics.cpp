@@ -512,6 +512,35 @@ void run_physical_audit_classifier_probe(const char* report_source_path) {
     review.meta_add_value(genre, "House");
     append_case(report, "review", assess_physical_metadata(review, cue));
 
+    // Real production classifier regression: an ambiguous physical value
+    // needs explicit REVIEW even if a different required tag is missing.
+    file_info_impl review_incomplete;
+    fill_complete(review_incomplete);
+    review_incomplete.meta_remove_field("DATE");
+    const size_t incomplete_genre = review_incomplete.meta_set("GENRE", "Trance");
+    review_incomplete.meta_add_value(incomplete_genre, "House");
+    append_case(report, "review_incomplete",
+                assess_physical_metadata(review_incomplete, cue));
+
+    // Duplicate global Cue directives require REVIEW even on an entirely
+    // empty physical tag set. Insert before FILE, never inside a TRACK.
+    std::string ambiguous_cue = cue;
+    const size_t before_file = ambiguous_cue.find("FILE \\"dummy.wav\\" WAVE");
+    if (before_file == std::string::npos) {
+        throw pfc::exception("Synthetic Cue classifier fixture is malformed");
+    }
+    ambiguous_cue.insert(before_file, "REM GENRE House\r\n");
+    append_case(report, "review_empty_cue_ambiguous",
+                assess_physical_metadata(empty, ambiguous_cue));
+
+    // A simple difference must not incorrectly override INCOMPLETE.
+    file_info_impl mismatch_incomplete;
+    fill_complete(mismatch_incomplete);
+    mismatch_incomplete.meta_remove_field("DATE");
+    mismatch_incomplete.meta_set("GENRE", "House");
+    append_case(report, "mismatch_incomplete",
+                assess_physical_metadata(mismatch_incomplete, cue));
+
     report << "write_result=read_only_classifier\n";
     write_report(report_source_path, report);
 }
