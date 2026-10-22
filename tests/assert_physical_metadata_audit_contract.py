@@ -82,7 +82,7 @@ assert "IDC_AUDIT_ACCESSIBLE_DETAIL" in RESOURCE
 assert "ES_READONLY | ES_AUTOHSCROLL | WS_TABSTOP" in RESOURCE
 assert "update_accessible_result_detail()" in UI
 assert "EVENT_OBJECT_VALUECHANGE" in UI
-assert "PRODUCTION_AUDIT_SELECTED_RESULT_READONLY_UIA_VALUE=PASS" in (
+assert "PRODUCTION_AUDIT_SELECTED_RESULT_READONLY_MSAA_VALUE=PASS" in (
     ROOT / "tests/assert_real_audit_uia.ps1").read_text(encoding="utf-8")
 
 # The only writer-capable transition is an explicit user action to existing

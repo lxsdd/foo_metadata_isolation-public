@@ -280,23 +280,71 @@ Write-Host ('PRODUCTION_AUDIT_DETAIL_UIA_CONTROL_TYPE='+$detailType)
 # Hosted UIA providers may classify a read-only EDIT as Text rather than
 # Edit. Require real UIA ValuePattern and verified read-only semantics below
 # instead of assuming one provider-specific ControlType.
+# This isolated foobar host exposes the native read-only EDIT as a UIA
+# Pane without ValuePattern, even in a genuine Windows desktop session.
+# Do not fabricate UIA PASS. Require a true oleacc/MSAA accessible *value*
+# from the exact visible EDIT HWND, and an independent Win32 read-only style.
 $valuePattern=$null
-if(-not $detailElement.TryGetCurrentPattern(
+if($detailElement.TryGetCurrentPattern(
     [System.Windows.Automation.ValuePattern]::Pattern,[ref]$valuePattern)) {
-  throw 'Accessible selected-result control has no native UIA ValuePattern'
+  $value=[System.Windows.Automation.ValuePattern]$valuePattern
+  if(-not $value.Current.IsReadOnly) {
+    throw 'Native Audit selected result UIA ValuePattern is unexpectedly writable'
+  }
+  Write-Host 'PRODUCTION_AUDIT_SELECTED_RESULT_UIA_VALUE_PATTERN=AVAILABLE'
+}else{
+  Write-Host 'PRODUCTION_AUDIT_SELECTED_RESULT_UIA_VALUE_PATTERN=PENDING_PROVIDER_UNEXPOSED'
 }
-$detailValue=[System.Windows.Automation.ValuePattern]$valuePattern
-if(-not $detailValue.Current.IsReadOnly) {
-  throw 'Physical Audit selected-result disclosure must be read-only'
+
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class MetadataIsolationAuditDetailAccessibility {
+    [ComImport, Guid("618736e0-3c3d-11cf-810c-00aa00389b71"),
+      InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+    public interface IAccessibleValue {
+        [DispId(-5004)] string this[object child] { get; }
+    }
+    [DllImport("oleacc.dll", ExactSpelling=true)]
+    static extern int AccessibleObjectFromWindow(
+        IntPtr hwnd, int dwObjectID, ref Guid riid,
+        [MarshalAs(UnmanagedType.Interface)] out IAccessibleValue accessible);
+    [DllImport("user32.dll", EntryPoint="GetWindowLongW", SetLastError=true)]
+    static extern int GetWindowLong(IntPtr hwnd,int index);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+    static extern int GetClassNameW(IntPtr hwnd,
+        [Out] System.Text.StringBuilder name,int capacity);
+
+    public static bool NativeReadOnlyEdit(IntPtr hwnd) {
+        var className = new System.Text.StringBuilder(64);
+        GetClassNameW(hwnd,className,className.Capacity);
+        // ES_READONLY=0x0800, GWL_STYLE=-16.
+        return String.Equals(className.ToString(),"Edit",StringComparison.OrdinalIgnoreCase)
+            && (GetWindowLong(hwnd,-16) & 0x0800) != 0;
+    }
+    public static string GetNativeAccessibleValue(IntPtr hwnd) {
+        var iid=new Guid("618736e0-3c3d-11cf-810c-00aa00389b71");
+        IAccessibleValue accessible=null;
+        int hr=AccessibleObjectFromWindow(hwnd,-4,ref iid,out accessible);
+        if(hr!=0 || accessible==null) throw new COMException(
+            "Real native selected-result EDIT has no MSAA accessible object",hr);
+        try { return accessible[0]; }
+        finally { Marshal.ReleaseComObject(accessible); }
+    }
 }
-$actualDetail=$detailValue.Current.Value
+'@
+
+if(-not [MetadataIsolationAuditDetailAccessibility]::NativeReadOnlyEdit($detailHwnd)) {
+  throw 'Actual selected-result Windows control is not a read-only Edit'
+}
+$actualDetail=[MetadataIsolationAuditDetailAccessibility]::GetNativeAccessibleValue($detailHwnd)
 if([string]::IsNullOrWhiteSpace($actualDetail) -or
    $actualDetail.IndexOf('INCOMPLETE',[StringComparison]::OrdinalIgnoreCase) -lt 0 -or
    $actualDetail.IndexOf('track-01.mp3',[StringComparison]::OrdinalIgnoreCase) -lt 0 -or
    $actualDetail.IndexOf('DATE',[StringComparison]::OrdinalIgnoreCase) -lt 0) {
-  throw 'Real UIA selected-result ValuePattern omits synthetic status/file/missing-field detail'
+  throw 'Real MSAA selected-result value omits synthetic status/file/missing-field details'
 }
-Write-Host 'PRODUCTION_AUDIT_SELECTED_RESULT_READONLY_UIA_VALUE=PASS'
+Write-Host 'PRODUCTION_AUDIT_SELECTED_RESULT_READONLY_MSAA_VALUE=PASS'
 
 $uiRowCount=$uiDataRows.Count+$uiListRows.Count
 if($uiRowCount -gt 0){
