@@ -411,6 +411,31 @@ foreach($entry in @(
   if($seen -ne [int]$entry.Expected){
     throw ('Actual native audit '+$entry.Name+' filter count incorrect; expected '+$entry.Expected+' observed '+$seen)
   }
+  # Independently inspect the actual native ListView selected-item count
+  # and the live MSAA value of the production read-only detail control.
+  # A zero-row filter MUST erase the previously selected synthetic file
+  # from the accessible value; no stale hidden-result disclosure is allowed.
+  $actualList=[MetadataIsolationWindowLocator]::GetDlgItem($window,1203)
+  $selectedCount=[MetadataIsolationWindowLocator]::SendMessage(
+      $actualList,0x1032,[IntPtr]::Zero,[IntPtr]::Zero).ToInt64()
+  if($selectedCount -lt 0 -or $selectedCount -gt $seen){
+    throw "Audit $($entry.Name) filter has an inconsistent native selection count"
+  }
+  if($seen -eq 0){
+    if($selectedCount -ne 0){
+      throw "Audit $($entry.Name) filter retained a hidden native selection"
+    }
+    $clear=$false
+    for($detailRetry=0;$detailRetry -lt 40;$detailRetry++){
+      $detailValue=[MetadataIsolationAuditDetailAccessibility]::GetNativeAccessibleValue($detailHwnd)
+      if($detailValue -ceq 'No result selected.'){$clear=$true;break}
+      Start-Sleep -Milliseconds 50
+    }
+    if(-not $clear){
+      throw "Audit $($entry.Name) filter leaked a stale selected-result accessible value"
+    }
+    Write-Host ('PRODUCTION_AUDIT_HIDDEN_RESULT_MSAA_CLEAR_'+$entry.Name.ToUpperInvariant()+'=PASS')
+  }
   Write-Host ('AUDIT_NATIVE_FILTER_'+$entry.Name.ToUpperInvariant()+'=PASS')
 }
 Write-Host 'PRODUCTION_AUDIT_NATIVE_FILTER_MATRIX=PASS'

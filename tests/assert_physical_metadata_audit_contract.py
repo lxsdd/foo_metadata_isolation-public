@@ -84,6 +84,13 @@ assert "update_accessible_result_detail()" in UI
 assert "EVENT_OBJECT_VALUECHANGE" in UI
 assert "PRODUCTION_AUDIT_SELECTED_RESULT_READONLY_MSAA_VALUE=PASS" in (
     ROOT / "tests/assert_real_audit_uia.ps1").read_text(encoding="utf-8")
+# A real zero-row filter may not leave previously selected track metadata in
+# the accessible detail value. Require an independent native+MSAA host oracle.
+AUDIT_UIA = (ROOT / "tests/assert_real_audit_uia.ps1").read_text(encoding="utf-8")
+assert "PRODUCTION_AUDIT_HIDDEN_RESULT_MSAA_CLEAR_" in AUDIT_UIA
+assert "GetNativeAccessibleValue($detailHwnd)" in AUDIT_UIA
+assert "0x1032" in AUDIT_UIA
+assert "$detailValue -ceq 'No result selected.'" in AUDIT_UIA
 
 # The only writer-capable transition is an explicit user action to existing
 # Physical Properties; the scan/analysis path itself remains read-only.
