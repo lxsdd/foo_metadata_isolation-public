@@ -14,6 +14,7 @@ CASES = {
     "duplicate": {"extra": 1, "target": 1, "rejected": 0, "complete": "true"},
     "all-subsongs": {"extra": 0, "target": 1, "rejected": 0, "complete": "true"},
     "remote-rejected": {"extra": 1, "target": 1, "rejected": 1, "complete": "false"},
+    "many-distinct": {"extra": 0, "target": 111, "rejected": 0, "complete": "true"},
 }
 
 
@@ -57,7 +58,8 @@ def main() -> None:
     # that independently emitted launcher count; never assume it is one.
     source_handles = int(data.get("handle_count", "0"))
     require(1 <= source_handles <= 3, "Unexpected original Cue launcher handle count")
-    expected_inputs = (source_handles * 3 if options.scenario == "all-subsongs"
+    expected_inputs = (224 if options.scenario == "many-distinct"
+                       else source_handles * 3 if options.scenario == "all-subsongs"
                        else source_handles + expected["extra"])
     for key, value in (
         ("mapping_input_count", expected_inputs),
@@ -68,9 +70,27 @@ def main() -> None:
         ("write_result", "map_only"),
     ):
         require(data.get(key) == str(value), f"{options.scenario}: wrong {key}")
-    path = data.get("mapping_target_0_path", "")
-    require(path.lower().endswith("track-01.mp3"), "Unexpected physical target path")
-    require("mapping_target_1_path" not in data, "Duplicated physical target")
+    if options.scenario == "many-distinct":
+        # The real SDK mapper returns the 111 unique source handles in the
+        # selection's original descending order, despite using a sorted set
+        # internally for de-duplication.
+        require(len(list(fixture.parent.glob("track-*.mp3"))) == 111,
+                "Expected exactly 111 distinct disposable MP3 carriers")
+        baseline_digest = digest(baseline)
+        for index in range(111):
+            number = 111 - index
+            leaf = f"track-{number:02d}.mp3"
+            mapped = data.get(f"mapping_target_{index}_path", "")
+            require(mapped.lower().endswith(leaf), f"Physical selection order changed at {index}")
+            require(data.get(f"mapping_target_{index}_subsong") == "0",
+                    f"Virtual subsong leaked into physical target {index}")
+            require(digest(fixture.parent / leaf) == baseline_digest,
+                    f"Synthetic source {number} was altered")
+        require("mapping_target_111_path" not in data, "Additional duplicate source leaked")
+    else:
+        path = data.get("mapping_target_0_path", "")
+        require(path.lower().endswith("track-01.mp3"), "Unexpected physical target path")
+        require("mapping_target_1_path" not in data, "Duplicated physical target")
 
     if options.scenario == "remote-rejected":
         rejected = data.get("mapping_first_rejected_path", "")
