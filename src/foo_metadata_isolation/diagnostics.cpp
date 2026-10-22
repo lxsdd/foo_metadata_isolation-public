@@ -1768,7 +1768,7 @@ public:
                     }
                     alias.replace(alias.size() - sizeof(leaf) + 1, sizeof(leaf) - 1,
                                   "TRACK-01.MP3");
-                    report << "mapping_alias_path=" << alias << "\n";
+                    report << "mapping_alias_path=" << alias.c_str() << "\n";
                     mapped_items.add_item(metadb::get()->handle_create(alias.c_str(), 0));
                 } else if (m_mode == probe_mode::map_physical_with_remote) {
                     mapped_items.add_item(metadb::get()->handle_create(
