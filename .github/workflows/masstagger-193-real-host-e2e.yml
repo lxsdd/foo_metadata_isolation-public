@@ -7,6 +7,7 @@ on:
       - '.github/workflows/masstagger-193-real-host-e2e.yml'
       - 'tests/run_real_masstagger_193_e2e.ps1'
       - 'tests/inspect_real_masstagger_manage_scripts.ps1'
+      - 'tests/assert_real_original_masstagger_bootstrap.ps1'
       - 'tests/make_plain_masstagger_mp3.py'
       - 'tests/make_masstagger_embedded_duration_mp3.py'
       - 'tests/assert_masstagger_plain_tag_write.py'
