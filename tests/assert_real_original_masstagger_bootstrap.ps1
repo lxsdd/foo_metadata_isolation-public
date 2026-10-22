@@ -110,6 +110,13 @@ public static class NativeOriginalMasstaggerBootstrapUI {
   static extern int GetMenuItemCount(IntPtr menu);
   [DllImport("user32.dll",CharSet=CharSet.Unicode,EntryPoint="GetMenuStringW")]
   static extern int GetMenuString(IntPtr menu,uint index,StringBuilder text,int capacity,uint flags);
+  public static string[] ControlsOfExactOriginalModal(int pid,string title){
+    if(!String.Equals(title,"Set Value",StringComparison.Ordinal))
+      throw new InvalidOperationException("Unapproved original modal");
+    IntPtr dialog=Find(pid,title,false);
+    if(dialog==IntPtr.Zero)return new string[0];
+    return Controls(dialog,pid);
+  }
   public static bool ClickExactAdd(IntPtr root,int pid){
     uint owner;GetWindowThreadProcessId(root,out owner);
     if(root==IntPtr.Zero||owner!=(uint)pid||!IsWindowVisible(root))
@@ -285,8 +292,23 @@ try{
           Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL_COUNT=' + $updatedControls.Count)
           foreach($entry in $updatedControls){Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL=' + $entry)}
           Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=GUARDED_REAL_INPUT_SENT_CONFIGURATION_PENDING'
+
+          if(@($titles | Where-Object {$_ -ceq 'Set Value'}).Count -eq 1){
+            $modalControls=@([NativeOriginalMasstaggerBootstrapUI]::ControlsOfExactOriginalModal($FoobarPid,'Set Value'))
+            Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_MODAL_CONTROL_COUNT=' + $modalControls.Count)
+            foreach($control in $modalControls){Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_MODAL_CONTROL=' + $control)}
+            if($modalControls.Count -gt 0){
+              Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL=OBSERVED_READ_ONLY'
+            }else{
+              Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL=PENDING_CONTROL_DISCOVERY'
+            }
+          }else{
+            Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL=PENDING_WINDOW_NOT_OBSERVED'
+          }
+
           # No field text is entered here; the native action's configuration
           # modal is deliberately closed without accepting or running it.
+          [void][NativeOriginalMasstaggerBootstrapUI]::CloseKnown($FoobarPid,'Set Value')
           [void][NativeOriginalMasstaggerBootstrapUI]::CloseKnown($FoobarPid,'Set value')
           [void][NativeOriginalMasstaggerBootstrapUI]::CloseKnown($FoobarPid,'Set value...')
         }else{
