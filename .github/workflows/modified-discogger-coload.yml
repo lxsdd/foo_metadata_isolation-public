@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: lxsdd/foo_discogger
-          ref: 2f247193e060f63c3bb4fdf961b14fe8330d8369
+          ref: 2d4780a402c4faf62481a1c867e6d8db83cf4c80
           path: external/discogger-draft
           persist-credentials: false
       - name: Exact reviewed SDK template for Metadata Isolation
@@ -67,7 +67,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $expected='2f247193e060f63c3bb4fdf961b14fe8330d8369'
+          $expected='2d4780a402c4faf62481a1c867e6d8db83cf4c80'
           if((& git -C external/discogger-draft rev-parse HEAD).Trim() -cne $expected){throw 'Modified Discogger source SHA mismatch'}
           & python scripts/verify-public-artifact-hold.py
           if($LASTEXITCODE -ne 0){throw 'Source-only artifact hold failed'}
@@ -101,7 +101,7 @@ jobs:
       - name: Real original Win32/x64 co-load and synthetic physical safety
         shell: pwsh
         env:
-          DISCOGGER_MODIFIED_SOURCE_SHA: 2f247193e060f63c3bb4fdf961b14fe8330d8369
+          DISCOGGER_MODIFIED_SOURCE_SHA: 2d4780a402c4faf62481a1c867e6d8db83cf4c80
         run: |
           $ErrorActionPreference='Stop'
           $arch='${{ matrix.architecture }}'
