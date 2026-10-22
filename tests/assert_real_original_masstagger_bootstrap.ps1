@@ -391,6 +391,15 @@ try{
               if($dryRun -ceq 'PASS_SYNTHETIC_FIELD_VALUE_ENTERED_OK_CLICKED'){
                 if([NativeOriginalMasstaggerBootstrapUI]::ClickOriginalRun($dialog,$FoobarPid)){
                   Write-Host 'MASSTAGGER_ORIGINAL_GENUINE_RUN_CLICK=PASS_SENT'
+                  # Keep genuine original Manage scripts UI alive while the
+                  # third-party action may be applying the synthetic tag.
+                  for($runPoll=0;$runPoll -lt 45;$runPoll++){
+                    Start-Sleep -Milliseconds 200
+                    try{$observedHash=(Get-FileHash -LiteralPath $source -Algorithm SHA256 -ErrorAction Stop).Hash}catch{continue}
+                    if($observedHash -cne $before){break}
+                  }
+                  Write-Host ('MASSTAGGER_ORIGINAL_GENUINE_RUN_UI_WINDOWS=' +
+                    ([NativeOriginalMasstaggerBootstrapUI]::Titles($FoobarPid) -join ';'))
                 }else{
                   Write-Host 'MASSTAGGER_ORIGINAL_GENUINE_RUN_CLICK=PENDING_NO_UNIQUE_RUN'
                 }
