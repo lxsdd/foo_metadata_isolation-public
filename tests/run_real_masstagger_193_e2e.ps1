@@ -101,6 +101,9 @@ try {
     $cueBefore=Join-Path $cueDir 'track-01.before'
     Copy-Item -LiteralPath $cueSource -Destination $cueBefore
     $cueSha=(Get-FileHash -LiteralPath $cueSource -Algorithm SHA256).Hash
+    if(Test-Path -LiteralPath ($cueSource+'.metadata-isolation-probe.txt')){
+        throw 'Freshly generated synthetic Cue fixture unexpectedly has startup report before host launch'
+    }
     $cueExpectedComment='MI_SYNTHETIC_CUE_PHYSICAL_193'
     $env:MI_REAL_ORIGINAL_MASSTAGGER_UI_FILE=$cueSource
     try {
