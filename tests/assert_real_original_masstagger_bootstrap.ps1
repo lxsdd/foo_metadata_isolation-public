@@ -221,6 +221,52 @@ public static class NativeOriginalMasstaggerBootstrapUI {
     }
     return true;
   }
+  [DllImport("user32.dll")] static extern IntPtr GetParent(IntPtr hwnd);
+  [DllImport("user32.dll",CharSet=CharSet.Unicode,EntryPoint="SendMessageW")]
+  static extern IntPtr SendMessageSetText(IntPtr hwnd,uint msg,IntPtr wp,string text);
+  [DllImport("user32.dll",CharSet=CharSet.Unicode,EntryPoint="SendMessageW")]
+  static extern IntPtr SendMessageGetText(IntPtr hwnd,uint msg,IntPtr wp,StringBuilder text);
+  static bool ExactEditText(IntPtr edit,string expected){
+    var text=new StringBuilder(160);
+    SendMessageGetText(edit,0x000D,new IntPtr(text.Capacity),text);
+    return String.Equals(text.ToString(),expected,StringComparison.Ordinal);
+  }
+  public static string ConfigureSyntheticAndCancel(IntPtr root,int pid){
+    uint p;GetWindowThreadProcessId(root,out p);
+    if(root==IntPtr.Zero||p!=(uint)pid||!IsWindowVisible(root)||
+       Caption(root)!="Set Value")
+      throw new InvalidOperationException("Synthetic Set Value requires exact genuine owned modal");
+    var combos=new List<IntPtr>();var edits=new List<IntPtr>();
+    var cancel=new List<IntPtr>();var ok=new List<IntPtr>();
+    EnumChildWindows(root,(h,x)=>{
+      uint owner;GetWindowThreadProcessId(h,out owner);
+      if(owner!=(uint)pid)return true;
+      string c=Class(h);
+      if(c=="ComboBox")combos.Add(h);
+      if(c=="Edit")edits.Add(h);
+      if(c=="Button"&&Caption(h)=="Cancel")cancel.Add(h);
+      if(c=="Button"&&Caption(h)=="OK")ok.Add(h);
+      return true;},IntPtr.Zero);
+    if(combos.Count!=1||edits.Count!=2||cancel.Count!=1||ok.Count!=1)
+      return "PENDING_UNEXPECTED_CONTROL_LAYOUT";
+    IntPtr field=IntPtr.Zero,value=IntPtr.Zero;
+    foreach(var edit in edits){
+      if(GetParent(edit)==combos[0])field=edit;
+      else if(GetParent(edit)==root)value=edit;
+    }
+    if(field==IntPtr.Zero||value==IntPtr.Zero||field==value)
+      return "PENDING_FIELD_VALUE_PARENT_NOT_VERIFIED";
+    // CI-only synthetic UI input, never a private preset, filename or tag.
+    const string name="COMMENT";
+    const string data="MI_SYNTHETIC_MASSTAGGER_CANCEL_193";
+    if(SendMessageSetText(field,0x000C,IntPtr.Zero,name)==IntPtr.Zero||
+       SendMessageSetText(value,0x000C,IntPtr.Zero,data)==IntPtr.Zero||
+       !ExactEditText(field,name)||!ExactEditText(value,data))
+      return "PENDING_ORIGINAL_MODAL_TEXT_NOT_CONFIRMED";
+    if(!PostMessage(cancel[0],0x00F5,IntPtr.Zero,IntPtr.Zero))
+      throw new InvalidOperationException("Original synthetic Set Value Cancel did not receive click");
+    return "PASS_SYNTHETIC_FIELD_VALUE_ENTERED_CANCEL_CLICKED";
+  }
   public static void CancelOriginalPopup(IntPtr root,int pid){
     uint owner;GetWindowThreadProcessId(root,out owner);
     if(root==IntPtr.Zero||owner!=(uint)pid)
@@ -295,7 +341,11 @@ try{
               Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_MODAL_CONTROL=' + $safeControl)
             }
             Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL=PASS_OPENED_READ_ONLY'
-            [NativeOriginalMasstaggerBootstrapUI]::Close($configuration,$FoobarPid)
+            $dryRun=[NativeOriginalMasstaggerBootstrapUI]::ConfigureSyntheticAndCancel($configuration,$FoobarPid)
+            Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_SYNTHETIC_DRY_RUN=' + $dryRun)
+            if($dryRun -cne 'PASS_SYNTHETIC_FIELD_VALUE_ENTERED_CANCEL_CLICKED'){
+              [NativeOriginalMasstaggerBootstrapUI]::Close($configuration,$FoobarPid)
+            }
             for($closedPoll=0;$closedPoll -lt 25;$closedPoll++){
               if([NativeOriginalMasstaggerBootstrapUI]::ExactTitle($FoobarPid,'Set Value') -eq [IntPtr]::Zero){break}
               Start-Sleep -Milliseconds 100
