@@ -128,6 +128,16 @@ try {
     Remove-Item -LiteralPath $inventory -Force
     Write-Host "EMBEDDED_CUE_INVENTORY_$Architecture=PASS"
 
+    # This calls the real C++ production assess_physical_metadata() from the
+    # isolated original foobar host, not a reimplemented Python classifier.
+    # Exercise the REVIEW-versus-INCOMPLETE/EMPTY regression on an unchanged
+    # disposable embedded-CUE MP3 before any synthetic write scenarios.
+    $classifierReport = Invoke-IsolatedProbe '/metadata-isolation-probe-physical-audit-classifier'
+    & python tests/assert_physical_audit_classifier.py $classifierReport $before $source
+    if ($LASTEXITCODE -ne 0) { throw 'Real native physical audit classifier regression oracle failed' }
+    Remove-Item -LiteralPath $classifierReport -Force
+    Write-Host "REAL_HOST_PHYSICAL_AUDIT_CLASSIFIER_$Architecture=PASS"
+
     $report = Invoke-IsolatedProbe '/metadata-isolation-probe-production-shadow-title'
     & python tests/assert_isolated_virtual_write.py $before $source $report
     if ($LASTEXITCODE -ne 0) { throw 'Independent virtual-write oracle failed' }
