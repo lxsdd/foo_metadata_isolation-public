@@ -187,12 +187,9 @@ Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_POSITIVE_PHYSICAL_COMMIT=PENDING_EXPLICI
 # synthetic per-file report name. Clear only the verified report of this
 # disposable startup probe, never a user file or an unrecognized report.
 if(Test-Path -LiteralPath $report){
-  if($result -notmatch '(?m)^native_original_masstagger_bootstrap=true\s*
- -or
-     $result -notmatch '(?m)^native_original_context_executed=Manage scripts\s*
- -or
-     $result -notmatch '(?m)^write_result=original_ui_returned\s*
-){
+  if($result -notmatch '(?m)^native_original_masstagger_bootstrap=true\s*$' -or
+     $result -notmatch '(?m)^native_original_context_executed=Manage scripts\s*$' -or
+     $result -notmatch '(?m)^write_result=original_ui_returned\s*$'){
     throw 'Refusing to remove unqualified native bootstrap report'
   }
   Remove-Item -LiteralPath $report -Force
