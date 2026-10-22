@@ -88,6 +88,16 @@ cfg_string g_cfg_audit_column_state(guids::cfg_audit_column_state, "");
 
 HWND g_audit_window = nullptr;
 
+// The default is a sentinel *pair*, not a ban on negative virtual-screen
+// coordinates. This helper is constexpr so both release and probe builds
+// enforce the same monitor-placement semantics.
+constexpr bool audit_has_saved_position(std::int64_t x, std::int64_t y) noexcept {
+    return x != -1 || y != -1;
+}
+static_assert(!audit_has_saved_position(-1, -1));
+static_assert(audit_has_saved_position(-1920, 250));
+static_assert(audit_has_saved_position(100, -1080));
+
 #if defined(FB2K_ENABLE_TEST_PROBES)
 // Only synthetic CI snapshots. Never record paths, metadata or user values.
 std::atomic_size_t g_audit_probe_model_rows{0};
@@ -1076,7 +1086,7 @@ public:
         // placed left of or above the primary display.
         const std::int64_t raw_x = g_cfg_audit_win_x;
         const std::int64_t raw_y = g_cfg_audit_win_y;
-        if (raw_x == -1 && raw_y == -1) return;
+        if (!audit_has_saved_position(raw_x, raw_y)) return;
 
         // cfg_int persists 64-bit values; Win32 RECT/MulDiv consume 32-bit
         // coordinates. Bound corrupted preferences before narrowing/scaling.
