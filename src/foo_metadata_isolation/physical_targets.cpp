@@ -86,9 +86,12 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
                 const auto collision = canonical_case_lookup.find(folded_native);
                 if (collision != canonical_case_lookup.end()) {
                     std::error_code error;
+                    const std::u8string current_utf8(native.begin(), native.end());
+                    const std::u8string previous_utf8(
+                        collision->second.begin(), collision->second.end());
                     const bool same_file = std::filesystem::equivalent(
-                        std::filesystem::u8path(native),
-                        std::filesystem::u8path(collision->second),
+                        std::filesystem::path(current_utf8),
+                        std::filesystem::path(previous_utf8),
                         error);
                     if (error || !same_file) {
                         reject_target(
