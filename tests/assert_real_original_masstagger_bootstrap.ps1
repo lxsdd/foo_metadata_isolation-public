@@ -74,6 +74,7 @@ public static class NativeOriginalMasstaggerBootstrapUI {
     return count==1?found:IntPtr.Zero;
   }
   public static IntPtr Masstagger(int pid){return Find(pid,"",true);}
+  public static IntPtr ExactTitle(int pid,string name){return Find(pid,name,false);}
   public static bool CloseKnown(int pid,string exact){
     var h=Find(pid,exact,false);if(h==IntPtr.Zero)return false;
     uint p;GetWindowThreadProcessId(h,out p);
@@ -284,6 +285,28 @@ try{
           $updatedControls=@([NativeOriginalMasstaggerBootstrapUI]::Controls($dialog,$FoobarPid))
           Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL_COUNT=' + $updatedControls.Count)
           foreach($entry in $updatedControls){Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL=' + $entry)}
+          $configuration=[NativeOriginalMasstaggerBootstrapUI]::ExactTitle($FoobarPid,'Set Value')
+          if($configuration -ne [IntPtr]::Zero){
+            # Genuine original third-party modal. Inspect only class names and
+            # bounded safe static/button captions; never inspect edit contents.
+            $configurationControls=@([NativeOriginalMasstaggerBootstrapUI]::Controls($configuration,$FoobarPid))
+            Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_MODAL_CONTROL_COUNT=' + $configurationControls.Count)
+            foreach($safeControl in $configurationControls){
+              Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_MODAL_CONTROL=' + $safeControl)
+            }
+            Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL=PASS_OPENED_READ_ONLY'
+            [NativeOriginalMasstaggerBootstrapUI]::Close($configuration,$FoobarPid)
+            for($closedPoll=0;$closedPoll -lt 25;$closedPoll++){
+              if([NativeOriginalMasstaggerBootstrapUI]::ExactTitle($FoobarPid,'Set Value') -eq [IntPtr]::Zero){break}
+              Start-Sleep -Milliseconds 100
+            }
+            if([NativeOriginalMasstaggerBootstrapUI]::ExactTitle($FoobarPid,'Set Value') -ne [IntPtr]::Zero){
+              throw 'Genuine disposable Set Value modal did not close without accepting edits'
+            }
+            Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL_CANCEL=PASS'
+          }else{
+            Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL=PENDING_NOT_OBSERVED'
+          }
           Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=GUARDED_REAL_INPUT_SENT_CONFIGURATION_PENDING'
           # No field text is entered here; the native action's configuration
           # modal is deliberately closed without accepting or running it.
