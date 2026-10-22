@@ -439,7 +439,30 @@ foreach($entry in @(
   Write-Host ('AUDIT_NATIVE_FILTER_'+$entry.Name.ToUpperInvariant()+'=PASS')
 }
 Write-Host 'PRODUCTION_AUDIT_NATIVE_FILTER_MATRIX=PASS'
+# Re-show a previously hidden row without silently reselecting it.
 [MetadataIsolationWindowLocator]::SelectFilter($window,0)
+$rows=-1
+for($retry=0;$retry -lt 50;$retry++){
+  $rows=[MetadataIsolationWindowLocator]::ItemCount($window)
+  if($rows -eq 1){break}
+  Start-Sleep -Milliseconds 100
+}
+if($rows -ne 1){throw 'Audit result failed to reappear'}
+$list=[MetadataIsolationWindowLocator]::GetDlgItem($window,1203)
+$selected=[MetadataIsolationWindowLocator]::SendMessage($list,0x1032,[IntPtr]::Zero,[IntPtr]::Zero).ToInt64()
+if($selected -ne 0){throw 'Audit resurrected a hidden selection'}
+$edit=[MetadataIsolationWindowLocator]::GetDlgItem($window,1206)
+if($edit -eq [IntPtr]::Zero -or [MetadataIsolationWindowLocator]::IsWindowEnabled($edit)){
+  throw 'Physical Edit enabled with no selected row'
+}
+$cleared=$false
+for($retry=0;$retry -lt 40;$retry++){
+  $value=[MetadataIsolationAuditDetailAccessibility]::GetNativeAccessibleValue($detailHwnd)
+  if($value -ceq 'No result selected.'){$cleared=$true;break}
+  Start-Sleep -Milliseconds 50
+}
+if(-not $cleared){throw 'Audit accessible value resurrected hidden result'}
+Write-Host 'PRODUCTION_AUDIT_HIDDEN_SELECTION_NOT_RESURRECTED=PASS'
 # BM_CLICK is a real native button event, not a direct test callback.
 [MetadataIsolationWindowLocator]::Rescan($window)
 $scanObserved=$false
