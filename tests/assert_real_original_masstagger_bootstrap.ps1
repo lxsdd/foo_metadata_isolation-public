@@ -151,34 +151,49 @@ public static class NativeOriginalMasstaggerBootstrapUI {
       return true;},IntPtr.Zero);
     return list.ToArray();
   }
+  [StructLayout(LayoutKind.Sequential)]
+  struct MenuRect {public int Left,Top,Right,Bottom;}
+  [StructLayout(LayoutKind.Sequential)]
+  struct MenuPoint {public int X,Y;}
   [DllImport("user32.dll")]
-  static extern uint GetMenuItemID(IntPtr menu,int index);
+  static extern bool GetMenuItemRect(IntPtr hwnd,IntPtr menu,uint item,out MenuRect rect);
+  [DllImport("user32.dll")]
+  static extern bool ScreenToClient(IntPtr hwnd,ref MenuPoint point);
   public static bool DispatchOriginalSetValueAction(IntPtr root,int pid){
     uint owner;GetWindowThreadProcessId(root,out owner);
     if(root==IntPtr.Zero||owner!=(uint)pid||!IsWindowVisible(root))
       throw new InvalidOperationException("Unverified original Masstagger UI for action selection");
-    uint selected=0xffffffff;int matches=0;
+    IntPtr selectedMenu=IntPtr.Zero;
+    MenuPoint location=new MenuPoint();
+    int matches=0;
     EnumWindows((h,x)=>{
       uint p;GetWindowThreadProcessId(h,out p);
       if(p!=(uint)pid||!IsWindowVisible(h)||Class(h)!="#32768")return true;
       IntPtr menu=SendMessage(h,0x01E1,IntPtr.Zero,IntPtr.Zero);
       if(menu==IntPtr.Zero)return true;
       int count=GetMenuItemCount(menu);
-      for(int i=0;i<Math.Min(count,40);i++){
+      for(uint i=0;i<(uint)Math.Min(count,40);i++){
         var label=new StringBuilder(200);
-        if(GetMenuString(menu,(uint)i,label,label.Capacity,0x0400)<=0)continue;
+        if(GetMenuString(menu,i,label,label.Capacity,0x0400)<=0)continue;
         if(!String.Equals(label.ToString().Split('\t')[0].Trim(),
                           "Set value...",StringComparison.Ordinal))continue;
-        uint candidate=GetMenuItemID(menu,i);
-        if(candidate==0xffffffff||candidate>65535)continue;
-        matches++;selected=candidate;
+        MenuRect rect;
+        if(!GetMenuItemRect(IntPtr.Zero,menu,i,out rect) ||
+           rect.Right<=rect.Left||rect.Bottom<=rect.Top)continue;
+        var point=new MenuPoint{X=rect.Left+(rect.Right-rect.Left)/2,
+                                Y=rect.Top+(rect.Bottom-rect.Top)/2};
+        if(!ScreenToClient(h,ref point)||point.X<0||point.Y<0)continue;
+        selectedMenu=h;location=point;matches++;
       }
       return true;},IntPtr.Zero);
     if(matches!=1)return false;
-    // ORIGINAL foobar/Masstagger WM_COMMAND for exactly one verified menu ID.
-    // This opens action configuration only; never presses Run.
-    if(!PostMessage(root,0x0111,new IntPtr((long)selected),IntPtr.Zero))
-      throw new InvalidOperationException("Original Set value command not posted");
+    // The only posted mouse click is the exact original 'Set value...'
+    // menu item in the verified disposable foobar PID. Never press Run.
+    var lp=new IntPtr((location.X&0xffff)|((location.Y&0xffff)<<16));
+    if(!PostMessage(selectedMenu,0x0200,IntPtr.Zero,lp) ||
+       !PostMessage(selectedMenu,0x0201,new IntPtr(1),lp) ||
+       !PostMessage(selectedMenu,0x0202,IntPtr.Zero,lp))
+      throw new InvalidOperationException("Original Set value menu item click failed");
     return true;
   }
   public static void CancelOriginalPopup(IntPtr root,int pid){
@@ -237,7 +252,10 @@ try{
           Start-Sleep -Milliseconds 500
           $titles=@([NativeOriginalMasstaggerBootstrapUI]::Titles($FoobarPid))
           Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_CONFIGURATION_TOP_LEVEL=' + ($titles -join ';'))
-          Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=DISPATCHED_READ_ONLY'
+          $updatedControls=@([NativeOriginalMasstaggerBootstrapUI]::Controls($dialog,$FoobarPid))
+          Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL_COUNT=' + $updatedControls.Count)
+          foreach($item in $updatedControls){Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL=' + $item)}
+          Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=ITEM_CLICKED_READ_ONLY_CONFIG_PENDING'
           # No field text is entered here; the native action's configuration
           # modal is deliberately closed without accepting or running it.
           [void][NativeOriginalMasstaggerBootstrapUI]::CloseKnown($FoobarPid,'Set value')
