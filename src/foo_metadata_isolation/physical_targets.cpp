@@ -6,6 +6,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <tuple>
 
 namespace metadata_isolation {
 namespace {
@@ -68,6 +69,38 @@ bool same_physical_file(const std::string& native, const std::string& previous) 
     return !error && equal;
 }
 
+// A different path (for example a Windows hardlink or a junction) can still
+// resolve to the *same* physical file. Query the actual local Windows file
+// identity using a read-only attribute handle; no tag or data is read/written.
+// A failed identity query is not permission to schedule a physical write.
+struct physical_file_identity {
+    DWORD volume_serial = 0;
+    DWORD file_index_high = 0;
+    DWORD file_index_low = 0;
+    bool operator<(const physical_file_identity& other) const noexcept {
+        return std::tie(volume_serial, file_index_high, file_index_low) <
+            std::tie(other.volume_serial, other.file_index_high, other.file_index_low);
+    }
+};
+
+physical_file_identity read_physical_file_identity(const std::wstring& native) {
+    const HANDLE handle = CreateFileW(
+        native.c_str(), FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, 0, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
+        throw pfc::exception("Unable to verify physical source file identity.");
+    }
+    BY_HANDLE_FILE_INFORMATION info = {};
+    const bool success = GetFileInformationByHandle(handle, &info) != 0;
+    CloseHandle(handle);
+    if (!success || (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0 ||
+        (info.nFileIndexHigh == 0 && info.nFileIndexLow == 0)) {
+        throw pfc::exception("Physical source has no trustworthy regular-file identity.");
+    }
+    return {info.dwVolumeSerialNumber, info.nFileIndexHigh, info.nFileIndexLow};
+}
+
 void reject_target(
     physical_target_map& result,
     const char* path,
@@ -94,6 +127,7 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
     // handles the rare case-sensitive Windows directory without writing.
     std::map<std::string, std::string, physical_source_less> canonical_native_lookup;
     std::map<std::wstring, std::string, windows_path_case_less> canonical_case_lookup;
+    std::map<physical_file_identity, std::string> seen_physical_file_ids;
     for (const auto& item : selected) {
         const char* source_path = item->get_path();
         try {
@@ -148,12 +182,23 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
                 continue;
             }
 
+            // Distinct filenames and hardlinks can refer to one physical file,
+            // even when no case folding or canonical-path comparison matches.
+            // Never open or write the same underlying file twice through
+            // distinct names in a multi-selection.
+            const physical_file_identity file_id =
+                read_physical_file_identity(unicode_native);
+            if (seen_physical_file_ids.find(file_id) != seen_physical_file_ids.end()) {
+                continue;
+            }
+
             // Add the handle before marking source as mapped. Failed handle
             // construction must never conceal a later valid selection.
             result.handles.add_item(metadb::get()->handle_create(canonical_path, 0));
             unique_physical_sources.insert(key);
             canonical_native_lookup.emplace(key, native);
             canonical_case_lookup.emplace(unicode_native, native);
+            seen_physical_file_ids.emplace(file_id, native);
         } catch (const std::exception& error) {
             reject_target(result, source_path, error.what());
         }

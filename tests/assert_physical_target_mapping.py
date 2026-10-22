@@ -14,6 +14,7 @@ CASES = {
     "duplicate": {"extra": 1, "target": 1, "rejected": 0, "complete": "true"},
     "case-alias": {"extra": 1, "target": 1, "rejected": 0, "complete": "true"},
     "unicode-case-alias": {"extra": 1, "target": 1, "rejected": 0, "complete": "true"},
+    "hardlink-alias": {"extra": 1, "target": 1, "rejected": 0, "complete": "true"},
     "all-subsongs": {"extra": 0, "target": 1, "rejected": 0, "complete": "true"},
     "remote-rejected": {"extra": 1, "target": 1, "rejected": 1, "complete": "false"},
     "remote-first-rejected": {"extra": 0, "target": 1, "rejected": 1, "complete": "false"},
@@ -83,6 +84,15 @@ def main() -> None:
         require(alias.endswith("/ähre/track-01.mp3"),
                 "Actual UTF-8 case-variant Windows source path was not exercised")
         require(fixture.parent.name == "Ähre", "Unexpected Unicode source fixture directory")
+    elif options.scenario == "hardlink-alias":
+        alias = data.get("mapping_alias_path", "").replace("\\", "/")
+        require(alias.endswith("/track-01-hardlink.mp3"),
+                "Actual hardlink target path was not exercised")
+        link = fixture.parent / "track-01-hardlink.mp3"
+        require(link.is_file() and link.samefile(fixture),
+                "Windows hardlink is not genuinely the same physical file")
+        require(digest(link) == digest(baseline),
+                "Read-only mapping unexpectedly mutated the hardlink target")
     else:
         require("mapping_alias_path" not in data, "Unexpected alias evidence")
     if options.scenario == "many-distinct":

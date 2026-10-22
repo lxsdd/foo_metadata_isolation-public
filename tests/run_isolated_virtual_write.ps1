@@ -314,6 +314,19 @@ try {
     }
     Write-Host "REAL_HOST_PHYSICAL_TARGET_MAPPING_MATRIX_$Architecture=PASS"
 
+    # A genuine NTFS hardlink has a *different name* but exactly the same
+    # underlying physical file. Verify that the production target router
+    # refuses to produce two writes to that physical identity.
+    $hardlink = Join-Path $root 'track-01-hardlink.mp3'
+    if (Test-Path -LiteralPath $hardlink) { throw 'Hardlink fixture unexpectedly exists' }
+    $null = New-Item -ItemType HardLink -Path $hardlink -Target $source -ErrorAction Stop
+    $hardlinkReport = Invoke-IsolatedProbe '/metadata-isolation-probe-map-physical-hardlink-alias'
+    & python tests/assert_physical_target_mapping.py $hardlinkReport $before $source --scenario hardlink-alias
+    if ($LASTEXITCODE -ne 0) { throw 'Native hardlink source-identity mapping regression' }
+    Remove-Item -LiteralPath $hardlinkReport -Force
+    Remove-Item -LiteralPath $hardlink -Force
+    Write-Host "REAL_HOST_PHYSICAL_HARDLINK_ALIAS_$Architecture=PASS"
+
     # Test a genuinely non-ASCII Windows directory name in the original
     # foobar host. The physical media is an independent synthetic copy, and
     # the read-only report plus SHA baseline are checked by the same oracle.

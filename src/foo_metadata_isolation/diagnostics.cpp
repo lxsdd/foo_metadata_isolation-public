@@ -42,6 +42,7 @@ enum class probe_mode {
     map_physical_with_duplicate,
     map_physical_with_case_alias,
     map_physical_with_unicode_case_alias,
+    map_physical_with_hardlink_alias,
     map_physical_with_remote,
     map_physical_with_remote_first,
     map_all_handles_physical,
@@ -223,6 +224,7 @@ bool parse_probe_mode(const char* token, probe_mode& mode) {
         { "/metadata-isolation-probe-map-physical-duplicate", probe_mode::map_physical_with_duplicate },
         { "/metadata-isolation-probe-map-physical-case-alias", probe_mode::map_physical_with_case_alias },
         { "/metadata-isolation-probe-map-physical-unicode-case-alias", probe_mode::map_physical_with_unicode_case_alias },
+        { "/metadata-isolation-probe-map-physical-hardlink-alias", probe_mode::map_physical_with_hardlink_alias },
         { "/metadata-isolation-probe-map-physical-remote", probe_mode::map_physical_with_remote },
         { "/metadata-isolation-probe-map-physical-remote-first", probe_mode::map_physical_with_remote_first },
         { "/metadata-isolation-probe-map-all-handles-physical", probe_mode::map_all_handles_physical },
@@ -1753,6 +1755,7 @@ public:
                 m_mode == probe_mode::map_physical_with_duplicate ||
                 m_mode == probe_mode::map_physical_with_case_alias ||
                 m_mode == probe_mode::map_physical_with_unicode_case_alias ||
+                m_mode == probe_mode::map_physical_with_hardlink_alias ||
                 m_mode == probe_mode::map_physical_with_remote ||
                 m_mode == probe_mode::map_physical_with_remote_first ||
                 m_mode == probe_mode::map_all_handles_physical ||
@@ -1787,6 +1790,20 @@ public:
                         throw pfc::exception("Unicode case-alias probe requires Ähre fixture.");
                     }
                     alias.replace(found, upper.size(), lower);
+                    report << "mapping_alias_path=" << alias.c_str() << "\n";
+                    mapped_items.add_item(metadb::get()->handle_create(alias.c_str(), 0));
+                } else if (m_mode == probe_mode::map_physical_with_hardlink_alias) {
+                    // A genuine second filename for the same disposable MP3,
+                    // created by the PowerShell runner with New-Item HardLink.
+                    // This must collapse by real file identity, not spelling.
+                    std::string alias(path);
+                    constexpr char original_leaf[] = "track-01.mp3";
+                    if (!alias.ends_with(original_leaf)) {
+                        throw pfc::exception("Hardlink probe requires track-01.mp3 fixture.");
+                    }
+                    alias.replace(alias.size() - sizeof(original_leaf) + 1,
+                                  sizeof(original_leaf) - 1,
+                                  "track-01-hardlink.mp3");
                     report << "mapping_alias_path=" << alias.c_str() << "\n";
                     mapped_items.add_item(metadb::get()->handle_create(alias.c_str(), 0));
                 } else if (m_mode == probe_mode::map_physical_with_remote) {

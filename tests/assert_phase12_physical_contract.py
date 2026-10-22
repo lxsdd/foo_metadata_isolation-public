@@ -50,6 +50,10 @@ for marker in (
     "CompareStringOrdinal(",
     "canonical_native_lookup.find(*original)",
     "same_physical_file(native, previously_mapped->second)",
+    "GetFileInformationByHandle(handle, &info)",
+    "FILE_READ_ATTRIBUTES",
+    "seen_physical_file_ids.find(file_id)",
+    "seen_physical_file_ids.emplace(file_id, native)",
     "Case-only source alias could not be verified",
 ):
     assert marker in MAPPER
@@ -62,6 +66,10 @@ assert "scenario='case-alias'" in ISOLATED_HOST_RUNTIME
 assert "scenario unicode-case-alias" in ISOLATED_HOST_RUNTIME
 assert "/metadata-isolation-probe-map-physical-unicode-case-alias" in DIAGNOSTICS
 assert "map_physical_with_unicode_case_alias" in DIAGNOSTICS
+assert "scenario hardlink-alias" in ISOLATED_HOST_RUNTIME
+assert "map_physical_with_hardlink_alias" in DIAGNOSTICS
+assert "/metadata-isolation-probe-map-physical-hardlink-alias" in DIAGNOSTICS
+assert "New-Item -ItemType HardLink" in ISOLATED_HOST_RUNTIME
 assert '/metadata-isolation-probe-map-physical-remote-first' in DIAGNOSTICS
 # The remote-first scenario is launched from the original isolated Win32/x64
 # host script, not the separate Phase-12 six-source format matrix.
