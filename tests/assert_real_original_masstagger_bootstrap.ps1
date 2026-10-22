@@ -410,7 +410,7 @@ try{
           }else{
             Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_MODAL=PENDING_NOT_OBSERVED'
           }
-          Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=GUARDED_REAL_INPUT_SENT_CONFIGURATION_PENDING'
+          Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=' + $(if($SyntheticPhysicalCommit){'REAL_ORIGINAL_UI_RUN_SENT_POSTIMAGE_ORACLE_REQUIRED'}else{'CANCEL_ONLY'}))
           # No field text is entered here; the native action's configuration
           # modal is deliberately closed without accepting or running it.
           [void][NativeOriginalMasstaggerBootstrapUI]::CloseKnown($FoobarPid,'Set value')
@@ -510,7 +510,13 @@ if(@($phases | Where-Object {$_ -ceq 'SCHEDULED_MAIN_THREAD'}).Count -ne 1){
   throw 'CI-only native bootstrap was not scheduled on foobar main thread'
 }
 
-Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_POSITIVE_PHYSICAL_COMMIT=PENDING_EXPLICIT_UI_ACTION'
+# This is a narrow real third-party physical-write gate, not overall release
+# acceptance. It is PASS only after the independent ID3/CUE/PRIV/MPEG oracle.
+if($SyntheticPhysicalCommit -and $changed){
+  Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_POSITIVE_PHYSICAL_COMMIT=PASS_INDEPENDENT_ORACLE'
+}else{
+  Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_POSITIVE_PHYSICAL_COMMIT=PENDING_EXPLICIT_UI_ACTION'
+}
 
 # The next, independently existing CLI/context-tree probe reuses the SAME
 # synthetic per-file report name. Clear only the verified report of this
