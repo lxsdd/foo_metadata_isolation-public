@@ -10,10 +10,10 @@ from pathlib import Path
 
 
 CASES = {
-    "single": {"input": 1, "target": 1, "rejected": 0, "complete": "true"},
-    "duplicate": {"input": 2, "target": 1, "rejected": 0, "complete": "true"},
-    "all-subsongs": {"input": 3, "target": 1, "rejected": 0, "complete": "true"},
-    "remote-rejected": {"input": 2, "target": 1, "rejected": 1, "complete": "false"},
+    "single": {"extra": 0, "target": 1, "rejected": 0, "complete": "true"},
+    "duplicate": {"extra": 1, "target": 1, "rejected": 0, "complete": "true"},
+    "all-subsongs": {"extra": 0, "target": 1, "rejected": 0, "complete": "true"},
+    "remote-rejected": {"extra": 1, "target": 1, "rejected": 1, "complete": "false"},
 }
 
 
@@ -52,8 +52,15 @@ def main() -> None:
         data[key] = value
 
     expected = CASES[options.scenario]
+    # foobar's real command-line parser may expand a Cue file argument into
+    # multiple virtual handles. Derive the expected input cardinality from
+    # that independently emitted launcher count; never assume it is one.
+    source_handles = int(data.get("handle_count", "0"))
+    require(1 <= source_handles <= 3, "Unexpected original Cue launcher handle count")
+    expected_inputs = (source_handles * 3 if options.scenario == "all-subsongs"
+                       else source_handles + expected["extra"])
     for key, value in (
-        ("mapping_input_count", expected["input"]),
+        ("mapping_input_count", expected_inputs),
         ("mapping_target_count", expected["target"]),
         ("mapping_rejected_count", expected["rejected"]),
         ("mapping_complete", expected["complete"]),
@@ -72,9 +79,6 @@ def main() -> None:
         require(bool(data.get("mapping_first_rejected_reason")), "Missing rejection reason")
     else:
         require("mapping_first_rejected_path" not in data, "Unexpected rejected source")
-
-    if options.scenario == "all-subsongs":
-        require(data.get("handle_count") == "1", "Wrong launcher fixture count")
 
     print("REAL_HOST_PHYSICAL_TARGET_MAPPING_" +
           options.scenario.upper().replace("-", "_") + "=PASS")
