@@ -271,6 +271,13 @@ $detailHwnd=[MetadataIsolationWindowLocator]::GetDlgItem($window,1212)
 if($detailHwnd -eq [IntPtr]::Zero) {
   throw 'Actual Audit accessible selected-result control missing'
 }
+# The real user flow is HOME in the ListView followed by Tab to the
+# read-only detail. Ask the dialog manager to move focus as the keyboard
+# would; the production EN_SETFOCUS handler must refresh the selected row.
+# No synthetic call directly into application model code is permitted.
+[void][MetadataIsolationWindowLocator]::SendMessage(
+  $window,0x0028,$detailHwnd,[IntPtr]::new(1))
+Start-Sleep -Milliseconds 100
 $detailElement=[System.Windows.Automation.AutomationElement]::FromHandle($detailHwnd)
 if($null -eq $detailElement) {
   throw 'Accessible selected-result control not exposed as Windows UIA element'

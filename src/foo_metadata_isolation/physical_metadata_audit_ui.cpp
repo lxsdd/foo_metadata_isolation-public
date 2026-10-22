@@ -1309,6 +1309,12 @@ public:
             case IDC_AUDIT_FILTER:
                 if (HIWORD(w_param) == CBN_SELCHANGE) self->on_filter_changed();
                 return TRUE;
+            case IDC_AUDIT_ACCESSIBLE_DETAIL:
+                // The hosted ListView may not send every selection-change
+                // notification reliably. Refresh the live selected row when
+                // keyboard/screenreader focus enters the read-only detail.
+                if (HIWORD(w_param) == EN_SETFOCUS) self->update_accessible_result_detail();
+                return TRUE;
             case IDC_AUDIT_RESCAN:
                 self->on_start_scan();
                 return TRUE;
