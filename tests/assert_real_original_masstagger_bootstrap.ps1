@@ -99,6 +99,65 @@ public static class NativeOriginalMasstaggerBootstrapUI {
     if(p!=(uint)pid||!PostMessage(h,0x10,IntPtr.Zero,IntPtr.Zero))
       throw new InvalidOperationException("Cannot close original disposable Masstagger UI");
   }
+
+  [DllImport("user32.dll",EntryPoint="SendMessageW")]
+  static extern IntPtr SendMessage(IntPtr hwnd,uint message,IntPtr wp,IntPtr lp);
+  [DllImport("user32.dll")]
+  static extern int GetMenuItemCount(IntPtr menu);
+  [DllImport("user32.dll",CharSet=CharSet.Unicode,EntryPoint="GetMenuStringW")]
+  static extern int GetMenuString(IntPtr menu,uint index,StringBuilder text,int capacity,uint flags);
+  public static bool ClickExactAdd(IntPtr root,int pid){
+    uint owner;GetWindowThreadProcessId(root,out owner);
+    if(root==IntPtr.Zero||owner!=(uint)pid||!IsWindowVisible(root))
+      throw new InvalidOperationException("Unverified original Masstagger owner");
+    IntPtr add=IntPtr.Zero;int count=0;
+    EnumChildWindows(root,(h,x)=>{
+      uint p;GetWindowThreadProcessId(h,out p);
+      if(p==(uint)pid&&Class(h)=="Button"&&Caption(h)=="&Add"){
+        add=h;count++;
+      }
+      return true;},IntPtr.Zero);
+    if(count!=1)return false;
+    if(!PostMessage(add,0x00F5,IntPtr.Zero,IntPtr.Zero))
+      throw new InvalidOperationException("Original Add button did not receive click");
+    return true;
+  }
+  public static string[] BoundedOriginalPopupItems(int pid){
+    var list=new List<string>();
+    EnumWindows((h,x)=>{
+      uint owner;GetWindowThreadProcessId(h,out owner);
+      if(owner!=(uint)pid||!IsWindowVisible(h)||Class(h)!="#32768")return true;
+      IntPtr menu=SendMessage(h,0x01E1,IntPtr.Zero,IntPtr.Zero);
+      if(menu==IntPtr.Zero)return true;
+      int count=GetMenuItemCount(menu);
+      if(count<0)return true;
+      for(uint i=0;i<(uint)Math.Min(count,40);i++){
+        var raw=new StringBuilder(200);
+        if(GetMenuString(menu,i,raw,raw.Capacity,0x0400)<=0)continue;
+        string value=raw.ToString().Split('\t')[0].Trim();
+        if(value.Length==0)continue;
+        bool safe=value.Length<=80;
+        foreach(char ch in value){
+          if(!(Char.IsLetterOrDigit(ch)||" &+.,()_-'".IndexOf(ch)>=0)){
+            safe=false;break;
+          }
+        }
+        list.Add(safe?value:"<redacted>");
+      }
+      return true;},IntPtr.Zero);
+    return list.ToArray();
+  }
+  public static void CancelOriginalPopup(IntPtr root,int pid){
+    uint owner;GetWindowThreadProcessId(root,out owner);
+    if(root==IntPtr.Zero||owner!=(uint)pid)
+      throw new InvalidOperationException("Original popup cancel owner mismatch");
+    PostMessage(root,0x001F,IntPtr.Zero,IntPtr.Zero);
+    EnumWindows((h,x)=>{
+      uint p;GetWindowThreadProcessId(h,out p);
+      if(p==(uint)pid&&Class(h)=="#32768")
+        PostMessage(h,0x001F,IntPtr.Zero,IntPtr.Zero);
+      return true;},IntPtr.Zero);
+  }
 }
 '@
 
@@ -123,6 +182,29 @@ try{
     Write-Host ('MASSTAGGER_GENUINE_BOOTSTRAP_UI_CONTROL_COUNT=' + $controls.Count)
     foreach($control in $controls){Write-Host ('MASSTAGGER_GENUINE_BOOTSTRAP_UI_CONTROL=' + $control)}
     Write-Host 'MASSTAGGER_GENUINE_BOOTSTRAP_UI=ORIGINAL_WINDOW_OBSERVED'
+
+    # Exploratory, disposable UI-only click: Add never executes Run.
+    # Read only original action-type labels; do not select an action, save a
+    # preset or touch the synthetic MP3. Menu is cancelled before closing.
+    if([NativeOriginalMasstaggerBootstrapUI]::ClickExactAdd($dialog,$FoobarPid)){
+      $popup=@()
+      for($menuPoll=0;$menuPoll -lt 25;$menuPoll++){
+        $popup=@([NativeOriginalMasstaggerBootstrapUI]::BoundedOriginalPopupItems($FoobarPid))
+        if($popup.Count -gt 0){break}
+        Start-Sleep -Milliseconds 100
+      }
+      if($popup.Count -gt 0){
+        Write-Host ('MASSTAGGER_ORIGINAL_ADD_ACTION_MENU_COUNT=' + $popup.Count)
+        foreach($item in $popup){Write-Host ('MASSTAGGER_ORIGINAL_ADD_ACTION_MENU_ITEM=' + $item)}
+        Write-Host 'MASSTAGGER_ORIGINAL_ADD_ACTION_MENU=OBSERVED_READ_ONLY'
+      }else{
+        Write-Host 'MASSTAGGER_ORIGINAL_ADD_ACTION_MENU=PENDING_NO_POPUP_ITEMS'
+      }
+      [NativeOriginalMasstaggerBootstrapUI]::CancelOriginalPopup($dialog,$FoobarPid)
+    }else{
+      Write-Host 'MASSTAGGER_ORIGINAL_ADD_ACTION_MENU=PENDING_NO_UNIQUE_ADD_BUTTON'
+    }
+
   }
 }finally{
   if($dialog -ne [IntPtr]::Zero){
