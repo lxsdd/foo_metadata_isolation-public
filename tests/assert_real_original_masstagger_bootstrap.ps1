@@ -158,13 +158,21 @@ public static class NativeOriginalMasstaggerBootstrapUI {
   [DllImport("user32.dll")]
   static extern bool GetMenuItemRect(IntPtr hwnd,IntPtr menu,uint item,out MenuRect rect);
   [DllImport("user32.dll")]
-  static extern bool ScreenToClient(IntPtr hwnd,ref MenuPoint point);
+  static extern IntPtr WindowFromPoint(MenuPoint point);
+  [DllImport("user32.dll")]
+  static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")]
+  static extern bool SetCursorPos(int x,int y);
+  [DllImport("user32.dll")]
+  static extern bool GetCursorPos(out MenuPoint point);
+  [DllImport("user32.dll")]
+  static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
   public static bool DispatchOriginalSetValueAction(IntPtr root,int pid){
     uint owner;GetWindowThreadProcessId(root,out owner);
     if(root==IntPtr.Zero||owner!=(uint)pid||!IsWindowVisible(root))
       throw new InvalidOperationException("Unverified original Masstagger UI for action selection");
     IntPtr selectedMenu=IntPtr.Zero;
-    MenuPoint location=new MenuPoint();
+    MenuPoint target=new MenuPoint();
     int matches=0;
     EnumWindows((h,x)=>{
       uint p;GetWindowThreadProcessId(h,out p);
@@ -180,20 +188,36 @@ public static class NativeOriginalMasstaggerBootstrapUI {
         MenuRect rect;
         if(!GetMenuItemRect(IntPtr.Zero,menu,i,out rect) ||
            rect.Right<=rect.Left||rect.Bottom<=rect.Top)continue;
-        var point=new MenuPoint{X=rect.Left+(rect.Right-rect.Left)/2,
-                                Y=rect.Top+(rect.Bottom-rect.Top)/2};
-        if(!ScreenToClient(h,ref point)||point.X<0||point.Y<0)continue;
-        selectedMenu=h;location=point;matches++;
+        selectedMenu=h;
+        target=new MenuPoint{X=rect.Left+(rect.Right-rect.Left)/2,
+                             Y=rect.Top+(rect.Bottom-rect.Top)/2};
+        matches++;
       }
       return true;},IntPtr.Zero);
     if(matches!=1)return false;
-    // The only posted mouse click is the exact original 'Set value...'
-    // menu item in the verified disposable foobar PID. Never press Run.
-    var lp=new IntPtr((location.X&0xffff)|((location.Y&0xffff)<<16));
-    if(!PostMessage(selectedMenu,0x0200,IntPtr.Zero,lp) ||
-       !PostMessage(selectedMenu,0x0201,new IntPtr(1),lp) ||
-       !PostMessage(selectedMenu,0x0202,IntPtr.Zero,lp))
-      throw new InvalidOperationException("Original Set value menu item click failed");
+    // Never inject input into a different foreground process or beneath
+    // a foreign overlay; all windows must belong to verified disposable foobar.
+    IntPtr foreground=GetForegroundWindow();
+    if(foreground==IntPtr.Zero)return false;
+    uint fgPid;GetWindowThreadProcessId(foreground,out fgPid);
+    if(fgPid!=(uint)pid)return false;
+    IntPtr hit=WindowFromPoint(target);
+    if(hit==IntPtr.Zero)return false;
+    uint hitPid;GetWindowThreadProcessId(hit,out hitPid);
+    if(hitPid!=(uint)pid)return false;
+    MenuPoint previous;
+    if(!GetCursorPos(out previous)||!SetCursorPos(target.X,target.Y))return false;
+    try {
+      foreground=GetForegroundWindow();
+      GetWindowThreadProcessId(foreground,out fgPid);
+      if(fgPid!=(uint)pid)return false;
+      // Exactly one real click into the original 'Set value...' menu item,
+      // in a disposable runner session. Never click original Run or any file.
+      mouse_event(0x0002,0,0,0,UIntPtr.Zero);
+      mouse_event(0x0004,0,0,0,UIntPtr.Zero);
+    }finally {
+      SetCursorPos(previous.X,previous.Y);
+    }
     return true;
   }
   public static void CancelOriginalPopup(IntPtr root,int pid){
@@ -267,7 +291,7 @@ try{
           $updatedControls=@([NativeOriginalMasstaggerBootstrapUI]::Controls($dialog,$FoobarPid))
           Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL_COUNT=' + $updatedControls.Count)
           foreach($item in $updatedControls){Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL=' + $item)}
-          Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=ITEM_CLICKED_READ_ONLY_CONFIG_PENDING'
+          Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=GUARDED_REAL_INPUT_SENT_CONFIGURATION_PENDING'
           # No field text is entered here; the native action's configuration
           # modal is deliberately closed without accepting or running it.
           [void][NativeOriginalMasstaggerBootstrapUI]::CloseKnown($FoobarPid,'Set value')
