@@ -14,6 +14,7 @@ CASES = {
     "duplicate": {"extra": 1, "target": 1, "rejected": 0, "complete": "true"},
     "all-subsongs": {"extra": 0, "target": 1, "rejected": 0, "complete": "true"},
     "remote-rejected": {"extra": 1, "target": 1, "rejected": 1, "complete": "false"},
+    "remote-first-rejected": {"extra": 0, "target": 1, "rejected": 1, "complete": "false"},
     "many-distinct": {"extra": 0, "target": 111, "rejected": 0, "complete": "true"},
 }
 
@@ -59,6 +60,7 @@ def main() -> None:
     source_handles = int(data.get("handle_count", "0"))
     require(1 <= source_handles <= 3, "Unexpected original Cue launcher handle count")
     expected_inputs = (224 if options.scenario == "many-distinct"
+                       else 2 if options.scenario == "remote-first-rejected"
                        else source_handles * 3 if options.scenario == "all-subsongs"
                        else source_handles + expected["extra"])
     for key, value in (
@@ -92,7 +94,7 @@ def main() -> None:
         require(path.lower().endswith("track-01.mp3"), "Unexpected physical target path")
         require("mapping_target_1_path" not in data, "Duplicated physical target")
 
-    if options.scenario == "remote-rejected":
+    if options.scenario in ("remote-rejected", "remote-first-rejected"):
         rejected = data.get("mapping_first_rejected_path", "")
         require(rejected.startswith("http://127.0.0.1/metadata-isolation-unsupported.mp3"),
                 "Missing known unsupported remote selection")

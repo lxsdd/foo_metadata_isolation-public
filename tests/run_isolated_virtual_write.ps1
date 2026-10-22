@@ -145,7 +145,8 @@ try {
         @{ scenario='single'; token='/metadata-isolation-probe-map-physical' },
         @{ scenario='duplicate'; token='/metadata-isolation-probe-map-physical-duplicate' },
         @{ scenario='all-subsongs'; token='/metadata-isolation-probe-map-all-handles-physical' },
-        @{ scenario='remote-rejected'; token='/metadata-isolation-probe-map-physical-remote' }
+        @{ scenario='remote-rejected'; token='/metadata-isolation-probe-map-physical-remote' },
+        @{ scenario='remote-first-rejected'; token='/metadata-isolation-probe-map-physical-remote-first' }
     )
     foreach ($mappingCase in $mappingCases) {
         $mapReport = Invoke-IsolatedProbe $mappingCase.token

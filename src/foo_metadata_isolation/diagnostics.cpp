@@ -41,6 +41,7 @@ enum class probe_mode {
     map_physical,
     map_physical_with_duplicate,
     map_physical_with_remote,
+    map_physical_with_remote_first,
     map_all_handles_physical,
     map_many_distinct_physical,
     context_tree_physical,
@@ -219,6 +220,7 @@ bool parse_probe_mode(const char* token, probe_mode& mode) {
         { "/metadata-isolation-probe-map-physical", probe_mode::map_physical },
         { "/metadata-isolation-probe-map-physical-duplicate", probe_mode::map_physical_with_duplicate },
         { "/metadata-isolation-probe-map-physical-remote", probe_mode::map_physical_with_remote },
+        { "/metadata-isolation-probe-map-physical-remote-first", probe_mode::map_physical_with_remote_first },
         { "/metadata-isolation-probe-map-all-handles-physical", probe_mode::map_all_handles_physical },
         { "/metadata-isolation-probe-map-111-distinct-physical", probe_mode::map_many_distinct_physical },
         { "/metadata-isolation-probe-context-tree-physical", probe_mode::context_tree_physical },
@@ -1746,6 +1748,7 @@ public:
             } else if (m_mode == probe_mode::map_physical ||
                 m_mode == probe_mode::map_physical_with_duplicate ||
                 m_mode == probe_mode::map_physical_with_remote ||
+                m_mode == probe_mode::map_physical_with_remote_first ||
                 m_mode == probe_mode::map_all_handles_physical ||
                 m_mode == probe_mode::map_many_distinct_physical) {
                 metadb_handle_list mapped_items = m_items;
@@ -1754,6 +1757,13 @@ public:
                 } else if (m_mode == probe_mode::map_physical_with_remote) {
                     mapped_items.add_item(metadb::get()->handle_create(
                         "http://127.0.0.1/metadata-isolation-unsupported.mp3", 0));
+                } else if (m_mode == probe_mode::map_physical_with_remote_first) {
+                    // A rejected first item must not hide a later valid local
+                    // physical target or make the overall selection complete.
+                    mapped_items.remove_all();
+                    mapped_items.add_item(metadb::get()->handle_create(
+                        "http://127.0.0.1/metadata-isolation-unsupported.mp3", 0));
+                    mapped_items.add_item(metadb::get()->handle_create(path, 0));
                 } else if (m_mode == probe_mode::map_all_handles_physical) {
                     mapped_items.remove_all();
                     for (size_t source = 0; source < m_items.get_count(); ++source) {

@@ -44,6 +44,8 @@ for marker in (
 ):
     assert marker in MAPPER
 assert "for (const auto& existing : result.handles)" not in MAPPER
+assert '/metadata-isolation-probe-map-physical-remote-first' in DIAGNOSTICS
+assert "remote-first-rejected" in RUNTIME
 assert MAPPER.index("handle_create(canonical_path, 0)") < MAPPER.index(
     "unique_physical_sources.insert(key)"
 )
