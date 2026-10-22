@@ -19,6 +19,9 @@ PROJECT = (ROOT / "src/foo_metadata_isolation/foo_metadata_isolation.vcxproj").r
 RUNTIME = (ROOT / "tests/run_phase12_physical_runtime.ps1").read_text(
     encoding="utf-8"
 )
+ISOLATED_HOST_RUNTIME = (ROOT / "tests/run_isolated_virtual_write.ps1").read_text(
+    encoding="utf-8"
+)
 FIXTURES = (ROOT / "tests/make_phase12_physical_fixtures.py").read_text(
     encoding="utf-8"
 )
@@ -45,7 +48,11 @@ for marker in (
     assert marker in MAPPER
 assert "for (const auto& existing : result.handles)" not in MAPPER
 assert '/metadata-isolation-probe-map-physical-remote-first' in DIAGNOSTICS
-assert "remote-first-rejected" in RUNTIME
+# The remote-first scenario is launched from the original isolated Win32/x64
+# host script, not the separate Phase-12 six-source format matrix.
+assert "remote-first-rejected" in ISOLATED_HOST_RUNTIME
+assert "/metadata-isolation-probe-map-physical-remote-first" in ISOLATED_HOST_RUNTIME
+assert "assert_physical_target_mapping.py" in ISOLATED_HOST_RUNTIME
 assert MAPPER.index("handle_create(canonical_path, 0)") < MAPPER.index(
     "unique_physical_sources.insert(key)"
 )
