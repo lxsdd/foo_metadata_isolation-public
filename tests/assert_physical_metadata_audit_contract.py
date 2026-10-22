@@ -76,6 +76,14 @@ assert "cfg_string g_cfg_audit_columns" in UI
 assert "WM_DPICHANGED" in UI
 assert "m_dark.AddDialogWithControls" in UI
 assert "physical_audit_tooltip_definitions" in UI
+# Native ListView rows may be unavailable through hosted UIA. Accessible
+# fallback is a production read-only EDIT mirroring the actual selected row.
+assert "IDC_AUDIT_ACCESSIBLE_DETAIL" in RESOURCE
+assert "ES_READONLY | ES_AUTOHSCROLL | WS_TABSTOP" in RESOURCE
+assert "update_accessible_result_detail()" in UI
+assert "EVENT_OBJECT_VALUECHANGE" in UI
+assert "PRODUCTION_AUDIT_SELECTED_RESULT_READONLY_UIA_VALUE=PASS" in (
+    ROOT / "tests/assert_real_audit_uia.ps1").read_text(encoding="utf-8")
 
 # The only writer-capable transition is an explicit user action to existing
 # Physical Properties; the scan/analysis path itself remains read-only.

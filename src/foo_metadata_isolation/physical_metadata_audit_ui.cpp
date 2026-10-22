@@ -304,6 +304,7 @@ public:
         m_window = window;
         m_list = GetDlgItem(window, IDC_AUDIT_RESULTS);
         m_progress = GetDlgItem(window, IDC_AUDIT_PROGRESS);
+        m_accessible_detail = GetDlgItem(window, IDC_AUDIT_ACCESSIBLE_DETAIL);
         m_dpi = ui::detect_window_dpi(window);
         if (m_dpi == 0) m_dpi = 96;
 
@@ -355,6 +356,7 @@ public:
         EnableWindow(GetDlgItem(window, IDC_AUDIT_CANCEL), FALSE);
         EnableWindow(GetDlgItem(window, IDC_AUDIT_EDIT_PHYSICAL), FALSE);
         ShowWindow(m_progress, SW_HIDE);
+        SetWindowTextW(m_accessible_detail, L"No result selected.");
         set_text(
             window,
             IDC_AUDIT_STATUS,
@@ -717,10 +719,52 @@ public:
         refresh_list(true);
     }
 
+    void update_accessible_result_detail() {
+        // Native ListView rows are exposed via MSAA, but the hosted Windows
+        // UIA provider may expose zero ListItem/DataItem children. Mirror the
+        // selected row's essential metadata to an ordinary read-only Windows
+        // EDIT control with real UIA ValuePattern support. Screenreader users
+        // can Tab to and read/copy the currently selected result without
+        // depending on inaccessible provider-specific ListView children.
+        if (m_accessible_detail == nullptr || !IsWindow(m_accessible_detail)) return;
+        pfc::string_formatter detail;
+        const int count = ListView_GetSelectedCount(m_list);
+        if (count == 0) {
+            detail << "No result selected.";
+        } else if (count != 1) {
+            detail << count << " results selected. Select one to read its details.";
+        } else {
+            const int selected = ListView_GetNextItem(m_list, -1, LVNI_SELECTED);
+            LVITEMW item = {};
+            item.mask = LVIF_PARAM;
+            item.iItem = selected;
+            if (selected < 0 || !ListView_GetItem(m_list, &item) ||
+                static_cast<size_t>(item.lParam) >= m_rows.size()) {
+                detail << "Selected result is unavailable.";
+            } else {
+                const auto& row = m_rows[static_cast<size_t>(item.lParam)];
+                detail << "Selected result: " << physical_audit_status_name(row.status)
+                       << ". File: " << row.file_name.c_str();
+                if (!row.missing_fields.empty())
+                    detail << ". Missing core fields: " << row.missing_fields.c_str();
+                const std::string comparison = cue_comparison_text(row);
+                if (!comparison.empty())
+                    detail << ". Cue comparison: " << comparison.c_str();
+            }
+        }
+        pfc::stringcvt::string_wide_from_utf8 wide(detail.c_str());
+        SetWindowTextW(m_accessible_detail, static_cast<const wchar_t*>(wide));
+        // This notifies MSAA listeners of a genuine Windows EDIT value change.
+        // UIA/screenreader support is asserted independently in host tests.
+        NotifyWinEvent(EVENT_OBJECT_VALUECHANGE, m_accessible_detail,
+                       OBJID_CLIENT, CHILDID_SELF);
+    }
+
     void update_edit_enabled() {
         EnableWindow(
             GetDlgItem(m_window, IDC_AUDIT_EDIT_PHYSICAL),
             !m_scan && ListView_GetSelectedCount(m_list) != 0);
+        update_accessible_result_detail();
     }
 
     void show_column_menu(POINT point) {
@@ -1038,6 +1082,8 @@ public:
         const int filter_label_width = ui::scale_for_window_dpi(m_window, 36);
         const int filter_width = ui::scale_for_window_dpi(m_window, 160);
         const int bottom_height = ui::scale_for_window_dpi(m_window, 30);
+        const int detail_height = ui::scale_for_window_dpi(m_window, 24);
+        const int detail_label_width = ui::scale_for_window_dpi(m_window, 104);
         const int button_height = ui::scale_for_window_dpi(m_window, 26);
 
         const int right = client.right - margin;
@@ -1066,13 +1112,23 @@ public:
             TRUE);
 
         const int list_top = progress_top + progress_height + gap;
-        const int list_bottom = client.bottom - margin - bottom_height - gap;
+        const int list_bottom = client.bottom - margin - bottom_height - gap - detail_height - gap;
         MoveWindow(
             m_list,
             margin, list_top,
             std::max<int>(40, client.right - 2 * margin),
             std::max<int>(40, list_bottom - list_top),
             TRUE);
+        const int detail_top = list_bottom + gap;
+        MoveWindow(
+            GetDlgItem(m_window, IDC_AUDIT_RESULT_DETAIL_LABEL),
+            margin, detail_top + ui::scale_for_window_dpi(m_window, 3),
+            detail_label_width, detail_height, TRUE);
+        MoveWindow(
+            m_accessible_detail,
+            margin + detail_label_width + gap, detail_top,
+            std::max<int>(40, client.right - 2 * margin - detail_label_width - gap),
+            detail_height, TRUE);
 
         int x = margin;
         struct button_layout { int id; int width; };
@@ -1380,6 +1436,7 @@ private:
     HWND m_window = nullptr;
     HWND m_list = nullptr;
     HWND m_progress = nullptr;
+    HWND m_accessible_detail = nullptr;
     UINT m_dpi = 96;
     fb2k::CCoreDarkModeHooks m_dark;
     dialog_tooltips m_tooltips;

@@ -263,6 +263,37 @@ Write-Host 'PRODUCTION_AUDIT_MSAA_SINGLE_ROW=PASS'
 # This is evidence for keyboard+MSAA, not full UIA/screen-reader acceptance.
 & ./tests/assert_real_audit_keyboard_msaa.ps1 -FoobarPid $FoobarPid -AuditHwnd $window -ListHwnd $ownedList
 
+# Read actual selected data from an independent, visible, read-only
+# Windows EDIT control. Unlike native ListView row enumeration, its standard
+# UIA ValuePattern does not depend on the host's ListView accessibility
+# provider. Require real data: never substitute a PowerShell-computed label.
+$detailHwnd=[MetadataIsolationWindowLocator]::GetDlgItem($window,1212)
+if($detailHwnd -eq [IntPtr]::Zero) {
+  throw 'Actual Audit accessible selected-result control missing'
+}
+$detailElement=[System.Windows.Automation.AutomationElement]::FromHandle($detailHwnd)
+if($null -eq $detailElement -or
+   $detailElement.Current.ControlType -ne [System.Windows.Automation.ControlType]::Edit) {
+  throw 'Accessible selected-result control is not a native UIA Edit'
+}
+$valuePattern=$null
+if(-not $detailElement.TryGetCurrentPattern(
+    [System.Windows.Automation.ValuePattern]::Pattern,[ref]$valuePattern)) {
+  throw 'Accessible selected-result control has no native UIA ValuePattern'
+}
+$detailValue=[System.Windows.Automation.ValuePattern]$valuePattern
+if(-not $detailValue.Current.IsReadOnly) {
+  throw 'Physical Audit selected-result disclosure must be read-only'
+}
+$actualDetail=$detailValue.Current.Value
+if([string]::IsNullOrWhiteSpace($actualDetail) -or
+   $actualDetail.IndexOf('INCOMPLETE',[StringComparison]::OrdinalIgnoreCase) -lt 0 -or
+   $actualDetail.IndexOf('track-01.mp3',[StringComparison]::OrdinalIgnoreCase) -lt 0 -or
+   $actualDetail.IndexOf('DATE',[StringComparison]::OrdinalIgnoreCase) -lt 0) {
+  throw 'Real UIA selected-result ValuePattern omits synthetic status/file/missing-field detail'
+}
+Write-Host 'PRODUCTION_AUDIT_SELECTED_RESULT_READONLY_UIA_VALUE=PASS'
+
 $uiRowCount=$uiDataRows.Count+$uiListRows.Count
 if($uiRowCount -gt 0){
   if($uiRowCount -ne 1){ throw 'Native Audit UIA has inconsistent result child count' }
