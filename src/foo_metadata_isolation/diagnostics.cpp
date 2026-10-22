@@ -2038,6 +2038,24 @@ private:
 commandline_handler_factory_t<probe_commandline_handler> g_probe_factory;
 
 #if defined(_WIN32) && defined(MI_REAL_MASSTAGGER_NATIVE_UI_BOOTSTRAP)
+// Test-only fixed status markers; never record paths, filenames or tag values.
+// The trace is private to RUNNER_TEMP, not included in build artifacts.
+static void mi_original_masstagger_trace(const char* phase) {
+    char runner[8192] = {};
+    const DWORD n = GetEnvironmentVariableA("RUNNER_TEMP", runner, sizeof(runner));
+    if (n == 0 || n >= sizeof(runner)) return;
+    std::string root(runner);
+    while (!root.empty() && (root.back() == '\\' || root.back() == '/')) root.pop_back();
+    if (root.empty()) return;
+    const std::string destination = root + "\\mi-original-masstagger-bootstrap-trace.txt";
+    HANDLE output = CreateFileA(destination.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
+        nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (output == INVALID_HANDLE_VALUE) return;
+    DWORD written = 0;
+    WriteFile(output, phase, static_cast<DWORD>(std::strlen(phase)), &written, nullptr);
+    WriteFile(output, "\\n", 1, &written, nullptr);
+    CloseHandle(output);
+}
 // CI ONLY. Compiled exclusively with the isolated genuine-Masstagger workflow;
 // not part of release, candidate, or ordinary foobar component builds.
 // This routes through the ORIGINAL third-party SDK context command, never
@@ -2050,17 +2068,18 @@ public:
         char requested[8192] = {};
         if (GetEnvironmentVariableA("GITHUB_ACTIONS", actions, sizeof(actions)) == 0 ||
             std::strcmp(actions, "true") != 0) return;
+        mi_original_masstagger_trace("INIT_ENTERED");
         const DWORD root_length = GetEnvironmentVariableA(
             "RUNNER_TEMP", runner, sizeof(runner));
         const DWORD input_length = GetEnvironmentVariableA(
             "MI_REAL_ORIGINAL_MASSTAGGER_UI_FILE", requested, sizeof(requested));
-        if (input_length == 0) return;
+        if (input_length == 0) { mi_original_masstagger_trace("NO_FIXTURE_ENV"); return; }
         if (root_length == 0 || root_length >= sizeof(runner) ||
-            input_length >= sizeof(requested)) return;
+            input_length >= sizeof(requested)) { mi_original_masstagger_trace("INVALID_ENV_LENGTH"); return; }
         char canonical[8192] = {};
         const DWORD full_length = GetFullPathNameA(
             requested, sizeof(canonical), canonical, nullptr);
-        if (full_length == 0 || full_length >= sizeof(canonical)) return;
+        if (full_length == 0 || full_length >= sizeof(canonical)) { mi_original_masstagger_trace("INVALID_CANONICAL_PATH"); return; }
         const size_t prefix_length = std::strlen(runner);
         const std::string path(canonical);
         const std::string required = "\\embedded-cue-masstagger\\track-01.mp3";
@@ -2068,20 +2087,24 @@ public:
             _strnicmp(path.c_str(), runner, prefix_length) != 0 ||
             (path[prefix_length] != '\\' && path[prefix_length] != '/') ||
             _stricmp(path.c_str() + path.size() - required.size(), required.c_str()) != 0) {
+            mi_original_masstagger_trace("REFUSED_PATH_SCOPE");
             FB2K_console_formatter() << "Metadata Isolation CI-only native UI bootstrap refused untrusted path";
             return;
         }
         const DWORD attr = GetFileAttributesA(path.c_str());
         if (attr == INVALID_FILE_ATTRIBUTES ||
-            (attr & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0) return;
+            (attr & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0) { mi_original_masstagger_trace("REFUSED_FILE_ATTRIBUTES"); return; }
 
+        mi_original_masstagger_trace("SCHEDULED_MAIN_THREAD");
         fb2k::inMainThread([path] {
+            mi_original_masstagger_trace("CALLBACK_ENTERED");
             pfc::string_formatter report;
             report << "native_original_masstagger_bootstrap=true\n";
             try {
                 input_info_reader::ptr reader;
                 input_entry::g_open_for_info_read(reader, nullptr, path.c_str(), fb2k::noAbort);
                 if (reader->get_subsong_count() != 2) {
+                    mi_original_masstagger_trace("INVALID_SYNTHETIC_SUBSONGS");
                     report << "write_result=invalid_synthetic_subsong_count\n";
                 } else {
                     reader.release();
@@ -2094,20 +2117,24 @@ public:
                     contextmenu_node* original = find_context_command(
                         context->get_root(), "Manage scripts");
                     if (original == nullptr) {
+                        mi_original_masstagger_trace("ORIGINAL_COMMAND_NOT_FOUND");
                         report << "write_result=original_masstagger_command_not_found\n";
                     } else {
                         report << "native_original_context_executed=Manage scripts\n";
+                        mi_original_masstagger_trace("ORIGINAL_COMMAND_EXECUTE_ENTERED");
                         original->execute();
+                        mi_original_masstagger_trace("ORIGINAL_COMMAND_EXECUTE_RETURNED");
                         report << "write_result=original_ui_returned\n";
                     }
                 }
             } catch (const std::exception&) {
                 // Never log arbitrary source paths, tag contents or exception
                 // details even though the only admitted test data is synthetic.
+                mi_original_masstagger_trace("BOOTSTRAP_EXCEPTION");
                 report << "write_result=original_native_bootstrap_exception\n";
             }
-            try { write_report(path.c_str(), report); }
-            catch (const std::exception&) {
+            try { write_report(path.c_str(), report); mi_original_masstagger_trace("REPORT_WRITTEN"); }
+            catch (const std::exception&) { mi_original_masstagger_trace("REPORT_WRITE_FAILED");
                 FB2K_console_formatter() << "Metadata Isolation native UI bootstrap report could not be written";
             }
         });
