@@ -61,6 +61,16 @@ jobs:
           ./validate_project.ps1
           & msbuild component.sln /t:Build /p:Configuration=Release /p:Platform=${{ matrix.architecture }} /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
           if($LASTEXITCODE -ne 0){throw 'Real two-component host DLL compilation failed'}
+
+          # Prove the CI-only macro reached the actual compiled architecture.
+          # Inspect only disposable local output; never upload component DLLs.
+          $dllPath=(Resolve-Path -LiteralPath '${{ matrix.dll }}').Path
+          $built=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($dllPath))
+          if(-not $built.Contains('mi-original-masstagger-bootstrap-trace.txt')){
+            throw 'CI-only Masstagger bootstrap was absent from compiled component DLL'
+          }
+          Write-Host 'MASSTAGGER_CI_ONLY_BOOTSTRAP_COMPILED_IN_REAL_DLL=PASS'
+
       - name: Load both real components, exercise genuine Masstagger physical CLI and verify ID3/PRIV/audio
         shell: pwsh
         run: |
