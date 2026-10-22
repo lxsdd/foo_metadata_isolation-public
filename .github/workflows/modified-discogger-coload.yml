@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   native-coload:
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 65
     strategy:
       fail-fast: false
@@ -92,7 +92,7 @@ jobs:
           $wtl=Join-Path (Get-Location) 'wtl/Include'
           if(-not (Test-Path -LiteralPath (Join-Path $wtl 'atlapp.h'))){throw 'WTL header absent'}
           $env:CL='/I"' + $wtl + '" ' + $env:CL
-          & msbuild component.sln /t:Build /p:Configuration=Release /p:Platform=${{ matrix.architecture }} /p:EnableTestProbes=true /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
+          & msbuild component.sln /t:Build /p:Configuration=Release /p:Platform=${{ matrix.architecture }} /p:EnableTestProbes=true /p:PlatformToolset=v143 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
           if($LASTEXITCODE -ne 0){throw 'Metadata Isolation build failed'}
       - name: Real original Win32/x64 co-load and synthetic physical safety
         shell: pwsh
