@@ -152,4 +152,33 @@ if(-not (Test-Path -LiteralPath $report)){
     Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_REAL_ORIGINAL_MANAGE_SCRIPTS_UI=PENDING'
   }
 }
+
+# The CI-only native startup probe must leave an independently observable
+# bounded phase trace even when the original modal UI cannot open. No file
+# paths, tag text, private presets or exception messages are ever printed.
+$phaseTrace=Join-Path $env:RUNNER_TEMP 'mi-original-masstagger-bootstrap-trace.txt'
+$allowed=@(
+  'INIT_ENTERED','NO_FIXTURE_ENV','INVALID_ENV_LENGTH',
+  'INVALID_CANONICAL_PATH','REFUSED_PATH_SCOPE','REFUSED_FILE_ATTRIBUTES',
+  'SCHEDULED_MAIN_THREAD','CALLBACK_ENTERED','INVALID_SYNTHETIC_SUBSONGS',
+  'ORIGINAL_COMMAND_NOT_FOUND','ORIGINAL_COMMAND_EXECUTE_ENTERED',
+  'ORIGINAL_COMMAND_EXECUTE_RETURNED','BOOTSTRAP_EXCEPTION',
+  'REPORT_WRITTEN','REPORT_WRITE_FAILED'
+)
+if(-not (Test-Path -LiteralPath $phaseTrace)){
+  Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_PHASES=NOT_EMITTED'
+  throw 'CI-only native bootstrap startup trace absent; not qualified as a runtime probe'
+}
+$phases=@(Get-Content -LiteralPath $phaseTrace | Where-Object {$_ -cin $allowed})
+Write-Host ('MASSTAGGER_NATIVE_BOOTSTRAP_PHASES=' + ($phases -join ','))
+if($phases.Count -eq 0 -or $phases[0] -cne 'INIT_ENTERED'){
+  throw 'CI-only native bootstrap did not reach its guarded initialization entry'
+}
+if(@($phases | Where-Object {$_ -cin @('NO_FIXTURE_ENV','INVALID_ENV_LENGTH','INVALID_CANONICAL_PATH','REFUSED_PATH_SCOPE','REFUSED_FILE_ATTRIBUTES')}).Count -gt 0){
+  throw 'CI-only native bootstrap rejected its disposable fixture before SDK dispatch'
+}
+if(@($phases | Where-Object {$_ -ceq 'SCHEDULED_MAIN_THREAD'}).Count -ne 1){
+  throw 'CI-only native bootstrap was not scheduled on foobar main thread'
+}
+
 Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_POSITIVE_PHYSICAL_COMMIT=PENDING_EXPLICIT_UI_ACTION'
