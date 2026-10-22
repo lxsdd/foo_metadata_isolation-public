@@ -131,7 +131,7 @@ try {
     # Runtime evidence from the genuine original Masstagger context command,
     # invoked by the CI-only native bootstrap on the isolated foobar main thread.
     # The assertion independently verifies the disposable media is byte-exact.
-    & ./tests/assert_real_original_masstagger_bootstrap.ps1 -FoobarPid $process.Id -Executable $exe -FixturePath $cueSource
+    & ./tests/assert_real_original_masstagger_bootstrap.ps1 -FoobarPid $process.Id -Executable $exe -FixturePath $cueSource -SyntheticPhysicalCommit -BeforeFixturePath $cueBefore
     if($LASTEXITCODE -ne 0){throw 'Native original Masstagger UI bootstrap oracle failed'}
 
     if((Get-FileHash -LiteralPath $plain -Algorithm SHA256).Hash -cne $beforeHash){
