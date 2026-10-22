@@ -28,15 +28,25 @@ ORACLE = (ROOT / "tests/assert_phase12_physical_oracle.py").read_text(
 
 
 # Physical routing canonicalizes local sources, rejects non-local sources,
-# deduplicates by source path, and always creates one physical subsong-0 handle.
+# deduplicates by canonical source with the original filesystem-aware comparison,
+# and always creates one physical subsong-0 handle. The prior per-item scan of
+# all already-created handles was quadratic for mostly distinct selections.
 for marker in (
     "filesystem::g_get_canonical_path",
     "source_filesystem->is_remote",
     "filesystem::g_get_native_path",
-    "same_source_path(existing->get_path(), canonical_path)",
+    "std::set<std::string, physical_source_less>",
+    "filesystem::g_compare_paths(left.c_str(), right.c_str(), comparison)",
+    "metadb::path_compare(left.c_str(), right.c_str()) < 0",
+    "unique_physical_sources.find(key)",
     "handle_create(canonical_path, 0)",
+    "unique_physical_sources.insert(key)",
 ):
     assert marker in MAPPER
+assert "for (const auto& existing : result.handles)" not in MAPPER
+assert MAPPER.index("handle_create(canonical_path, 0)") < MAPPER.index(
+    "unique_physical_sources.insert(key)"
+)
 
 # A partially unmappable selection never reaches the delegated command.
 assert "!mapping.complete() || mapping.empty()" in CONTEXT
