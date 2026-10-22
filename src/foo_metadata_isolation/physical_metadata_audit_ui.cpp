@@ -86,6 +86,23 @@ cfg_string g_cfg_audit_column_state(guids::cfg_audit_column_state, "");
 
 HWND g_audit_window = nullptr;
 
+#if defined(FB2K_ENABLE_TEST_PROBES)
+// Only synthetic CI snapshots. Never record paths, metadata or user values.
+std::atomic_size_t g_audit_probe_model_rows{0};
+std::atomic_size_t g_audit_probe_filtered_rows{0};
+std::atomic_int g_audit_probe_native_rows{-1};
+std::atomic_int g_audit_probe_filter{-1};
+std::atomic_bool g_audit_probe_list_visible{false};
+std::atomic_int g_audit_probe_insert_result{-999};
+std::atomic_int g_audit_probe_insert_error{-1};
+std::atomic_int g_audit_probe_list_style{-1};
+std::atomic_int g_audit_probe_list_unicode{-1};
+std::atomic_int g_audit_probe_resolved_valid{-1};
+std::atomic_int g_audit_probe_cached_valid{-1};
+std::atomic_int g_audit_probe_handles_equal{-1};
+std::atomic_int g_audit_probe_actual_rows{-1};
+#endif
+
 enum class audit_scope {
     library,
     selection,
@@ -849,6 +866,13 @@ public:
     }
 
     void refresh_list(bool preserve_selection) {
+        // foobar's native theme/layout initialization may recreate the
+        // ListView after WM_INITDIALOG. Never keep writing into a stale HWND.
+        const HWND current_list = GetDlgItem(m_window, IDC_AUDIT_RESULTS);
+        if (current_list == nullptr || !IsWindow(current_list)) {
+            throw pfc::exception("Audit result ListView is unavailable");
+        }
+        m_list = current_list;
         std::set<std::string> selected_paths;
         if (preserve_selection) {
             int item = -1;
@@ -880,6 +904,16 @@ public:
                 return sort_direction > 0 ? result < 0 : result > 0;
             });
 
+        // ListView sends synchronous LVN_ITEMCHANGED while rows are replaced.
+        // Updating selection-dependent buttons from inside that notification
+        // re-enters the same control. Defer the single update until the batch
+        // finishes, including during exceptions.
+        struct refresh_scope {
+            bool& active;
+            explicit refresh_scope(bool& target) : active(target) { active = true; }
+            ~refresh_scope() { active = false; }
+        } rebuilding(m_refreshing_list);
+
         SendMessageW(m_list, WM_SETREDRAW, FALSE, 0);
         ListView_DeleteAllItems(m_list);
         for (size_t display_index = 0; display_index < visible.size(); ++display_index) {
@@ -892,7 +926,20 @@ public:
             item.iSubItem = 0;
             item.pszText = const_cast<wchar_t*>(static_cast<const wchar_t*>(status));
             item.lParam = static_cast<LPARAM>(row_index);
+            SetLastError(ERROR_SUCCESS);
             const int inserted = ListView_InsertItem(m_list, &item);
+#if defined(FB2K_ENABLE_TEST_PROBES)
+            g_audit_probe_insert_result.store(inserted);
+            g_audit_probe_insert_error.store(static_cast<int>(GetLastError()));
+            g_audit_probe_list_style.store(static_cast<int>(GetWindowLongPtrW(m_list, GWL_STYLE)));
+            g_audit_probe_list_unicode.store(ListView_GetUnicodeFormat(m_list));
+            const HWND resolved = GetDlgItem(m_window, IDC_AUDIT_RESULTS);
+            g_audit_probe_cached_valid.store(IsWindow(m_list) != FALSE);
+            g_audit_probe_resolved_valid.store(IsWindow(resolved) != FALSE);
+            g_audit_probe_handles_equal.store(resolved == m_list);
+            g_audit_probe_actual_rows.store(
+                IsWindow(resolved) ? ListView_GetItemCount(resolved) : -1);
+#endif
             if (inserted < 0) continue;
 
             const std::string values[] = {
@@ -927,6 +974,13 @@ public:
         InvalidateRect(m_list, nullptr, TRUE);
         update_sort_indicator();
         update_edit_enabled();
+#if defined(FB2K_ENABLE_TEST_PROBES)
+        g_audit_probe_model_rows.store(m_rows.size());
+        g_audit_probe_filtered_rows.store(visible.size());
+        g_audit_probe_native_rows.store(ListView_GetItemCount(m_list));
+        g_audit_probe_filter.store(filter);
+        g_audit_probe_list_visible.store(IsWindowVisible(m_list) != FALSE);
+#endif
     }
 
     void update_sort_indicator() {
@@ -1089,7 +1143,7 @@ public:
                 edit_selected_physical();
                 return 0;
             case LVN_ITEMCHANGED:
-                update_edit_enabled();
+                if (!m_refreshing_list) update_edit_enabled();
                 return 0;
             case LVN_GETINFOTIPW: {
                 auto* tip = reinterpret_cast<NMLVGETINFOTIPW*>(header);
@@ -1291,6 +1345,7 @@ private:
     bool m_close_when_done = false;
     bool m_pending_scan = false;
     bool m_modeless_registered = false;
+    bool m_refreshing_list = false;
     audit_scope m_pending_scope = audit_scope::library;
     metadb_handle_list m_pending_seed;
 };
@@ -1329,6 +1384,25 @@ mainmenu_group_popup_factory g_audit_mainmenu_group(
 mainmenu_commands_factory_t<audit_mainmenu_commands> g_audit_mainmenu_commands;
 
 } // namespace
+
+#if defined(FB2K_ENABLE_TEST_PROBES)
+void read_audit_internal_state_for_test(pfc::string_base& output) {
+    output << "audit_model_rows=" << g_audit_probe_model_rows.load() << "\n"
+           << "audit_filtered_rows=" << g_audit_probe_filtered_rows.load() << "\n"
+           << "audit_native_rows=" << g_audit_probe_native_rows.load() << "\n"
+           << "audit_insert_result=" << g_audit_probe_insert_result.load() << "\n"
+           << "audit_insert_error=" << g_audit_probe_insert_error.load() << "\n"
+           << "audit_list_style=" << g_audit_probe_list_style.load() << "\n"
+           << "audit_list_unicode=" << g_audit_probe_list_unicode.load() << "\n"
+           << "audit_cached_valid=" << g_audit_probe_cached_valid.load() << "\n"
+           << "audit_resolved_valid=" << g_audit_probe_resolved_valid.load() << "\n"
+           << "audit_handles_equal=" << g_audit_probe_handles_equal.load() << "\n"
+           << "audit_actual_rows=" << g_audit_probe_actual_rows.load() << "\n"
+           << "audit_filter_index=" << g_audit_probe_filter.load() << "\n"
+           << "audit_list_visible="
+           << (g_audit_probe_list_visible.load() ? "true" : "false") << "\n";
+}
+#endif
 
 void show_physical_metadata_audit_library() {
     metadb_handle_list empty;

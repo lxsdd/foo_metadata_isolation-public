@@ -1,0 +1,81 @@
+name: Genuine Masstagger 1.9.3 + Metadata Isolation Win32/x64 native E2E
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/masstagger-193-real-host-e2e.yml'
+      - 'tests/run_real_masstagger_193_e2e.ps1'
+      - 'tests/inspect_real_masstagger_manage_scripts.ps1'
+      - 'tests/assert_real_original_masstagger_bootstrap.ps1'
+      - 'tests/make_plain_masstagger_mp3.py'
+      - 'tests/make_masstagger_embedded_duration_mp3.py'
+      - 'tests/assert_masstagger_plain_tag_write.py'
+      - 'tests/assert_masstagger_embedded_cue_physical.py'
+      - 'src/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-native-masstagger:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: Win32
+            dll: build/foo_metadata_isolation.dll
+          - architecture: x64
+            dll: build/x64/foo_metadata_isolation.dll
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: lxsdd/foobar2000_component_template
+          ref: 31a35947a7527826c2199491692802e3ce3d8bd7
+          path: external/sdk-template
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: lxsdd/dev-infrastructure-public
+          ref: 35369054c56f4c6ccb2f802944e9675852fd35ec
+          path: .ci_installer
+          persist-credentials: false
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build Metadata Isolation with the reviewed SDK and no distributable artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python tests/verify_source_release_provenance.py
+          if($LASTEXITCODE -ne 0){throw 'Source/license provenance must pass'}
+          python scripts/verify-public-artifact-hold.py
+          if($LASTEXITCODE -ne 0){throw 'Binary publication gate must remain enabled'}
+          ./ci/test-latest-sdk.ps1
+          $wtl=Join-Path (Get-Location) 'wtl/Include'
+          if(-not (Test-Path -LiteralPath (Join-Path $wtl 'atlapp.h'))){throw 'Pinned WTL missing'}
+          $env:CL='/DMI_REAL_MASSTAGGER_NATIVE_UI_BOOTSTRAP=1 /I"' + $wtl + '" ' + $env:CL
+          ./validate_project.ps1
+          & msbuild component.sln /t:Build /p:Configuration=Release /p:EnableTestProbes=true /p:Platform=${{ matrix.architecture }} /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
+          if($LASTEXITCODE -ne 0){throw 'Real two-component host DLL compilation failed'}
+
+          # Prove the CI-only macro reached the actual compiled architecture.
+          # Inspect only disposable local output; never upload component DLLs.
+          $dllPath=(Resolve-Path -LiteralPath '${{ matrix.dll }}').Path
+          $built=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($dllPath))
+          if(-not $built.Contains('mi-original-masstagger-bootstrap-trace.txt')){
+            throw 'CI-only Masstagger bootstrap was absent from compiled component DLL'
+          }
+          Write-Host 'MASSTAGGER_CI_ONLY_BOOTSTRAP_COMPILED_IN_REAL_DLL=PASS'
+
+      - name: Load both real components, exercise genuine Masstagger physical CLI and verify ID3/PRIV/audio
+        shell: pwsh
+        run: |
+          ./tests/run_real_masstagger_193_e2e.ps1 -Architecture '${{ matrix.architecture }}' -MetadataIsolationDll '${{ matrix.dll }}'
+          Write-Host 'MASSTAGGER_193_GENUINE_NATIVE_TEST_${{ matrix.architecture }}=PASS'
+      # Original binaries and generated MP3s are always disposed inside
+      # ephemeral RUNNER_TEMP. NO component DLL or media upload or release.
