@@ -1,0 +1,81 @@
+name: Source-only historical security triage
+
+# Diagnostic report only: a successful run does not approve v1.0.0.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/source-history-triage.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-history:
+    name: Redacted complete visible Git blob audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Fetch reviewed read-only scanner source
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/dev-infrastructure-public
+          ref: 4a562946975b610651a0a4e71a422699a7a604d9
+          persist-credentials: false
+      - name: Audit reachable history and PR refs without printing credentials
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+          GIT_LFS_SKIP_SMUDGE: '1'
+        run: |
+          set -euo pipefail
+          python3 scripts/audit_git_history.py foo_metadata_isolation-public | tee "$RUNNER_TEMP/mi-history.log"
+          python3 - "$RUNNER_TEMP/mi-history.log" <<'PY'
+          import json,sys
+          from pathlib import Path
+          lines=Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+          matches=[line.split("AUDIT_RESULT_JSON=",1)[1] for line in lines if line.startswith("AUDIT_RESULT_JSON=")]
+          if len(matches)!=1:raise SystemExit("HISTORY_GATE=FAIL no unique redacted audit report")
+          a=json.loads(matches[0])
+          allowed={"ea9bbe91d4aa","da0ccb0a9035","ce643a80efff"}
+          blobs={e.get("blob") for e in a.get("evidence",{}).get("binary_distribution",[])}
+          if not (a.get("status")=="completed" and a.get("repository")=="foo_metadata_isolation-public"
+              and a.get("pr_refs_fetched") is True and a.get("all_visible_blobs_read") is True
+              and a.get("oversized_blob_count")==0 and a.get("hits")=={"binary_distribution":3}
+              and blobs==allowed and a.get("unique_historical_blobs",0)>0):
+              raise SystemExit("HISTORY_GATE=FAIL unexpected historical flags or incomplete scan")
+          print("HISTORY_GATE=PASS only immutable reviewed foobar SDK libraries; complete visible history")
+          PY
+
+  independent-gitleaks:
+    name: Redacted pinned independent Gitleaks history audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Fetch reviewed read-only scanner source
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/dev-infrastructure-public
+          ref: 4a562946975b610651a0a4e71a422699a7a604d9
+          persist-credentials: false
+      - name: Audit all reachable refs with SHA256 pinned Gitleaks
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          set -euo pipefail
+          python3 scripts/audit_gitleaks.py foo_metadata_isolation-public | tee "$RUNNER_TEMP/mi-gitleaks.log"
+          python3 - "$RUNNER_TEMP/mi-gitleaks.log" <<'PY'
+          import json,sys
+          from pathlib import Path
+          lines=Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+          matches=[line.split("INDEPENDENT_SECRET_AUDIT_JSON=",1)[1] for line in lines
+                   if line.startswith("INDEPENDENT_SECRET_AUDIT_JSON=")]
+          if len(matches)!=1:raise SystemExit("GITLEAKS_GATE=FAIL no unique redacted audit report")
+          a=json.loads(matches[0])
+          if not (a.get("repository")=="foo_metadata_isolation-public"
+              and a.get("completed") is True and a.get("included_pr_refs") is True
+              and a.get("version")=="8.30.1" and a.get("findings")==0
+              and a.get("rules")=={}):
+              raise SystemExit("GITLEAKS_GATE=FAIL historical secret detection requires triage")
+          print("GITLEAKS_GATE=PASS zero findings in reachable history")
+          PY
