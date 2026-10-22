@@ -138,6 +138,25 @@ try {
     Remove-Item -LiteralPath $classifierReport -Force
     Write-Host "REAL_HOST_PHYSICAL_AUDIT_CLASSIFIER_$Architecture=PASS"
 
+    # Exercise the actual optimized C++ map_to_physical_targets() in the
+    # original host. Every scenario stays read-only and restores the existing
+    # report-file contract before the next isolated probe.
+    $mappingCases = @(
+        @{ scenario='single'; token='/metadata-isolation-probe-map-physical' },
+        @{ scenario='duplicate'; token='/metadata-isolation-probe-map-physical-duplicate' },
+        @{ scenario='all-subsongs'; token='/metadata-isolation-probe-map-all-handles-physical' },
+        @{ scenario='remote-rejected'; token='/metadata-isolation-probe-map-physical-remote' }
+    )
+    foreach ($mappingCase in $mappingCases) {
+        $mapReport = Invoke-IsolatedProbe $mappingCase.token
+        & python tests/assert_physical_target_mapping.py $mapReport $before $source --scenario $mappingCase.scenario
+        if ($LASTEXITCODE -ne 0) {
+            throw "Original foobar physical-source mapper regression: $($mappingCase.scenario)"
+        }
+        Remove-Item -LiteralPath $mapReport -Force
+    }
+    Write-Host "REAL_HOST_PHYSICAL_TARGET_MAPPING_MATRIX_$Architecture=PASS"
+
     $report = Invoke-IsolatedProbe '/metadata-isolation-probe-production-shadow-title'
     & python tests/assert_isolated_virtual_write.py $before $source $report
     if ($LASTEXITCODE -ne 0) { throw 'Independent virtual-write oracle failed' }
