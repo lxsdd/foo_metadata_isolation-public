@@ -157,6 +157,29 @@ try {
     }
     Write-Host "REAL_HOST_PHYSICAL_TARGET_MAPPING_MATRIX_$Architecture=PASS"
 
+    # A separate source-only fixture matrix exercises real path comparison
+    # and first-appearance order for 111 distinct local physical files.
+    # Copies never leave RUNNER_TEMP and none of the mapper actions writes.
+    $originalSource = $source
+    $originalBefore = $before
+    $manyDir = Join-Path $root 'physical-111-distinct'
+    $null = New-Item -ItemType Directory -Path $manyDir
+    $source = Join-Path $manyDir 'track-01.mp3'
+    $before = Join-Path $manyDir 'track-01.mp3.before'
+    Copy-Item -LiteralPath $originalSource -Destination $source
+    Copy-Item -LiteralPath $source -Destination $before
+    for ($index = 2; $index -le 111; $index++) {
+        $newLeaf = ('track-{0:D2}.mp3' -f $index)
+        Copy-Item -LiteralPath $source -Destination (Join-Path $manyDir $newLeaf)
+    }
+    $manyReport = Invoke-IsolatedProbe '/metadata-isolation-probe-map-111-distinct-physical'
+    & python tests/assert_physical_target_mapping.py $manyReport $before $source --scenario many-distinct
+    if ($LASTEXITCODE -ne 0) { throw 'Native 111-source physical mapping regression oracle failed' }
+    Remove-Item -LiteralPath $manyReport -Force
+    $source = $originalSource
+    $before = $originalBefore
+    Write-Host "REAL_HOST_PHYSICAL_111_DISTINCT_TARGETS_$Architecture=PASS"
+
     $report = Invoke-IsolatedProbe '/metadata-isolation-probe-production-shadow-title'
     & python tests/assert_isolated_virtual_write.py $before $source $report
     if ($LASTEXITCODE -ne 0) { throw 'Independent virtual-write oracle failed' }
