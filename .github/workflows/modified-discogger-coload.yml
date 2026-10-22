@@ -5,8 +5,12 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/modified-discogger-coload.yml'
-      - 'tests/run_isolated_virtual_write.ps1'
+      - 'tests/**'
       - 'src/**'
+      - 'scripts/verify-public-artifact-hold.py'
+      - 'ci/test-latest-sdk.ps1'
+      - 'sdk/SDK-PIN.json'
+      - 'validate_project.ps1'
       - 'component.sln'
       - 'component.props'
   workflow_dispatch:
@@ -34,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: lxsdd/foo_discogger
-          ref: 0934b3dc0fcae2a8084ae9a8d596d3fc690f1a40
+          ref: 2f247193e060f63c3bb4fdf961b14fe8330d8369
           path: external/discogger-draft
           persist-credentials: false
       - name: Exact reviewed SDK template for Metadata Isolation
@@ -63,7 +67,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $expected='0934b3dc0fcae2a8084ae9a8d596d3fc690f1a40'
+          $expected='2f247193e060f63c3bb4fdf961b14fe8330d8369'
           if((& git -C external/discogger-draft rev-parse HEAD).Trim() -cne $expected){throw 'Modified Discogger source SHA mismatch'}
           & python scripts/verify-public-artifact-hold.py
           if($LASTEXITCODE -ne 0){throw 'Source-only artifact hold failed'}
@@ -97,7 +101,7 @@ jobs:
       - name: Real original Win32/x64 co-load and synthetic physical safety
         shell: pwsh
         env:
-          DISCOGGER_MODIFIED_SOURCE_SHA: 0934b3dc0fcae2a8084ae9a8d596d3fc690f1a40
+          DISCOGGER_MODIFIED_SOURCE_SHA: 2f247193e060f63c3bb4fdf961b14fe8330d8369
         run: |
           $ErrorActionPreference='Stop'
           $arch='${{ matrix.architecture }}'
