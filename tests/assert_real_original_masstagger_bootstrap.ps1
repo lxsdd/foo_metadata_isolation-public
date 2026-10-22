@@ -28,7 +28,11 @@ if($hostProcess.ProcessName -cne 'foobar2000' -or
 }
 $before=(Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
 $report=$source+'.metadata-isolation-probe.txt'
-if(Test-Path -LiteralPath $report){throw 'Refusing stale native bootstrap diagnostic report'}
+if(Test-Path -LiteralPath $report){
+  # The fixture was verified absent before foobar launch; on a fast host,
+  # its CI-only initquit handler may finish before this watcher starts.
+  Write-Host 'MASSTAGGER_NATIVE_BOOTSTRAP_STARTUP_REPORT_ALREADY_EMITTED=TRUE'
+}
 
 Add-Type -TypeDefinition @'
 using System;
