@@ -272,10 +272,14 @@ if($detailHwnd -eq [IntPtr]::Zero) {
   throw 'Actual Audit accessible selected-result control missing'
 }
 $detailElement=[System.Windows.Automation.AutomationElement]::FromHandle($detailHwnd)
-if($null -eq $detailElement -or
-   $detailElement.Current.ControlType -ne [System.Windows.Automation.ControlType]::Edit) {
-  throw 'Accessible selected-result control is not a native UIA Edit'
+if($null -eq $detailElement) {
+  throw 'Accessible selected-result control not exposed as Windows UIA element'
 }
+$detailType=$detailElement.Current.ControlType.ProgrammaticName
+Write-Host ('PRODUCTION_AUDIT_DETAIL_UIA_CONTROL_TYPE='+$detailType)
+# Hosted UIA providers may classify a read-only EDIT as Text rather than
+# Edit. Require real UIA ValuePattern and verified read-only semantics below
+# instead of assuming one provider-specific ControlType.
 $valuePattern=$null
 if(-not $detailElement.TryGetCurrentPattern(
     [System.Windows.Automation.ValuePattern]::Pattern,[ref]$valuePattern)) {
