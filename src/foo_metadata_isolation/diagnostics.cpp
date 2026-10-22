@@ -525,7 +525,7 @@ void run_physical_audit_classifier_probe(const char* report_source_path) {
     // Duplicate global Cue directives require REVIEW even on an entirely
     // empty physical tag set. Insert before FILE, never inside a TRACK.
     std::string ambiguous_cue = cue;
-    const size_t before_file = ambiguous_cue.find("FILE \\"dummy.wav\\" WAVE");
+    const size_t before_file = ambiguous_cue.find(R"(FILE "dummy.wav" WAVE)");
     if (before_file == std::string::npos) {
         throw pfc::exception("Synthetic Cue classifier fixture is malformed");
     }
