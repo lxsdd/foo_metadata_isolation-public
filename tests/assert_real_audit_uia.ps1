@@ -338,6 +338,22 @@ if(-not [MetadataIsolationAuditDetailAccessibility]::NativeReadOnlyEdit($detailH
   throw 'Actual selected-result Windows control is not a read-only Edit'
 }
 $actualDetail=[MetadataIsolationAuditDetailAccessibility]::GetNativeAccessibleValue($detailHwnd)
+# Only an automatically generated runner-local, copyright-free MP3 is present.
+# Diagnose native EDIT text versus the MSAA object's own value without ever
+# printing live library metadata, tokens, settings or paths outside RUNNER_TEMP.
+$nativeDetail=[System.Text.StringBuilder]::new(1024)
+[void][MetadataIsolationWindowLocator]::GetWindowTextW(
+  $detailHwnd,$nativeDetail,$nativeDetail.Capacity)
+$msaaText=if($null -eq $actualDetail){''}else{[string]$actualDetail}
+$nativeText=$nativeDetail.ToString()
+Write-Host ('AUDIT_ACCESSIBLE_DETAIL_NATIVE_LENGTH='+$nativeText.Length)
+Write-Host ('AUDIT_ACCESSIBLE_DETAIL_MSAA_LENGTH='+$msaaText.Length)
+foreach($token in @('INCOMPLETE','track-01.mp3','DATE')){
+  Write-Host ('AUDIT_ACCESSIBLE_DETAIL_NATIVE_'+$token.Replace('-','_')+'='+(
+      $nativeText.IndexOf($token,[StringComparison]::OrdinalIgnoreCase) -ge 0))
+  Write-Host ('AUDIT_ACCESSIBLE_DETAIL_MSAA_'+$token.Replace('-','_')+'='+(
+      $msaaText.IndexOf($token,[StringComparison]::OrdinalIgnoreCase) -ge 0))
+}
 if([string]::IsNullOrWhiteSpace($actualDetail) -or
    $actualDetail.IndexOf('INCOMPLETE',[StringComparison]::OrdinalIgnoreCase) -lt 0 -or
    $actualDetail.IndexOf('track-01.mp3',[StringComparison]::OrdinalIgnoreCase) -lt 0 -or
