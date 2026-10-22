@@ -1,0 +1,28 @@
+name: Owner 111-track original copy preflight (synthetic CI only)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/owner-mix-copy-preflight.yml'
+      - 'scripts/Prepare-MetadataIsolationAcceptanceCopy.ps1'
+      - 'tests/assert_owner_mix_copy_synthetic.ps1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  copy-invariants:
+    runs-on: windows-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate offline owner media copy invariants using synthetic bytes only
+        shell: pwsh
+        run: |
+          ./tests/assert_owner_mix_copy_synthetic.ps1
+      # No user audio file, no network download, no provider accounts and
+      # no component binary artifact is used in this job.
