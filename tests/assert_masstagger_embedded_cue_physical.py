@@ -11,7 +11,10 @@ from assert_masstagger_plain_tag_write import parse_plain,decode_comm
 
 
 def check(before:Path,after:Path,expected:str):
-    assert expected == "MI_SYNTHETIC_CUE_PHYSICAL_193"
+    # Two immutable, reviewed disposable-only action values: the original
+    # third-party CLI probe and the genuine Set Value -> Run UI probe.
+    # Never accept arbitrary expected data from a user file or preset.
+    assert expected in {"MI_SYNTHETIC_CUE_PHYSICAL_193", "MI_SYNTHETIC_MASSTAGGER_REAL_UI_193"}
     a,audio_a=parse_plain(before)
     b,audio_b=parse_plain(after)
     required={"TIT2","TPE1","TALB","TCON","PRIV","TXXX"}
