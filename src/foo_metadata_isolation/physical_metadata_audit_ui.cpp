@@ -98,6 +98,23 @@ static_assert(!audit_has_saved_position(-1, -1));
 static_assert(audit_has_saved_position(-1920, 250));
 static_assert(audit_has_saved_position(100, -1080));
 
+// Persisted cfg_int is 64-bit; UI filter and sort indices are native int.
+// Validate range before narrowing. Invalid filter values retain the existing
+// Problems default, while out-of-range sort columns clamp to visible bounds.
+constexpr int audit_valid_filter(std::int64_t stored) noexcept {
+    return (stored >= k_filter_problems && stored <= k_filter_ok)
+        ? static_cast<int>(stored) : k_filter_problems;
+}
+constexpr int audit_valid_sort_column(std::int64_t stored) noexcept {
+    return static_cast<int>(std::clamp<std::int64_t>(
+        stored, column_status, column_count - 1));
+}
+static_assert(audit_valid_filter(-100) == k_filter_problems);
+static_assert(audit_valid_filter(999) == k_filter_problems);
+static_assert(audit_valid_filter(k_filter_ok) == k_filter_ok);
+static_assert(audit_valid_sort_column(-100) == column_status);
+static_assert(audit_valid_sort_column(999) == column_count - 1);
+
 #if defined(FB2K_ENABLE_TEST_PROBES)
 // Only synthetic CI snapshots. Never record paths, metadata or user values.
 std::atomic_size_t g_audit_probe_model_rows{0};
@@ -684,7 +701,7 @@ public:
     }
 
     void on_column_click(int column) {
-        int direction = g_cfg_audit_sort_dir;
+        int direction = g_cfg_audit_sort_dir < 0 ? -1 : 1;
         if (g_cfg_audit_sort_col == column) direction = -direction;
         else direction = 1;
         g_cfg_audit_sort_col = column;
@@ -872,8 +889,7 @@ public:
                 m_window, IDC_AUDIT_FILTER, CB_ADDSTRING, 0,
                 reinterpret_cast<LPARAM>(filter));
         }
-        int selected = g_cfg_audit_filter;
-        if (selected < k_filter_problems || selected > k_filter_ok) selected = k_filter_problems;
+        const int selected = audit_valid_filter(g_cfg_audit_filter);
         SendDlgItemMessageW(m_window, IDC_AUDIT_FILTER, CB_SETCURSEL, selected, 0);
     }
 
@@ -901,13 +917,12 @@ public:
 
         std::vector<size_t> visible;
         visible.reserve(m_rows.size());
-        const int filter = g_cfg_audit_filter;
+        const int filter = audit_valid_filter(g_cfg_audit_filter);
         for (size_t index = 0; index < m_rows.size(); ++index) {
             if (filter_matches(m_rows[index], filter)) visible.push_back(index);
         }
 
-        const int sort_column = static_cast<int>(std::clamp<std::int64_t>(
-            g_cfg_audit_sort_col, 0, column_count - 1));
+        const int sort_column = audit_valid_sort_column(g_cfg_audit_sort_col);
         const int sort_direction = g_cfg_audit_sort_dir < 0 ? -1 : 1;
         std::stable_sort(
             visible.begin(),
@@ -999,7 +1014,7 @@ public:
     void update_sort_indicator() {
         const HWND header = ListView_GetHeader(m_list);
         if (header == nullptr) return;
-        const int sort_column = std::clamp<int>(g_cfg_audit_sort_col, 0, column_count - 1);
+        const int sort_column = audit_valid_sort_column(g_cfg_audit_sort_col);
         const bool ascending = g_cfg_audit_sort_dir >= 0;
         for (int index = 0; index < column_count; ++index) {
             HDITEMW item = {};
