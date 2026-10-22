@@ -151,6 +151,36 @@ public static class NativeOriginalMasstaggerBootstrapUI {
       return true;},IntPtr.Zero);
     return list.ToArray();
   }
+  [DllImport("user32.dll")]
+  static extern uint GetMenuItemID(IntPtr menu,int index);
+  public static bool DispatchOriginalSetValueAction(IntPtr root,int pid){
+    uint owner;GetWindowThreadProcessId(root,out owner);
+    if(root==IntPtr.Zero||owner!=(uint)pid||!IsWindowVisible(root))
+      throw new InvalidOperationException("Unverified original Masstagger UI for action selection");
+    uint selected=0xffffffff;int matches=0;
+    EnumWindows((h,x)=>{
+      uint p;GetWindowThreadProcessId(h,out p);
+      if(p!=(uint)pid||!IsWindowVisible(h)||Class(h)!="#32768")return true;
+      IntPtr menu=SendMessage(h,0x01E1,IntPtr.Zero,IntPtr.Zero);
+      if(menu==IntPtr.Zero)return true;
+      int count=GetMenuItemCount(menu);
+      for(int i=0;i<Math.Min(count,40);i++){
+        var label=new StringBuilder(200);
+        if(GetMenuString(menu,(uint)i,label,label.Capacity,0x0400)<=0)continue;
+        if(!String.Equals(label.ToString().Split('\t')[0].Trim(),
+                          "Set value...",StringComparison.Ordinal))continue;
+        uint candidate=GetMenuItemID(menu,i);
+        if(candidate==0xffffffff||candidate>65535)continue;
+        matches++;selected=candidate;
+      }
+      return true;},IntPtr.Zero);
+    if(matches!=1)return false;
+    // ORIGINAL foobar/Masstagger WM_COMMAND for exactly one verified menu ID.
+    // This opens action configuration only; never presses Run.
+    if(!PostMessage(root,0x0111,new IntPtr((long)selected),IntPtr.Zero))
+      throw new InvalidOperationException("Original Set value command not posted");
+    return true;
+  }
   public static void CancelOriginalPopup(IntPtr root,int pid){
     uint owner;GetWindowThreadProcessId(root,out owner);
     if(root==IntPtr.Zero||owner!=(uint)pid)
@@ -201,6 +231,21 @@ try{
         Write-Host ('MASSTAGGER_ORIGINAL_ADD_ACTION_MENU_COUNT=' + $popup.Count)
         foreach($item in $popup){Write-Host ('MASSTAGGER_ORIGINAL_ADD_ACTION_MENU_ITEM=' + $item)}
         Write-Host 'MASSTAGGER_ORIGINAL_ADD_ACTION_MENU=OBSERVED_READ_ONLY'
+
+        if(@($popup | Where-Object {$_ -ceq 'Set value...'}).Count -eq 1 -and
+           [NativeOriginalMasstaggerBootstrapUI]::DispatchOriginalSetValueAction($dialog,$FoobarPid)){
+          Start-Sleep -Milliseconds 500
+          $titles=@([NativeOriginalMasstaggerBootstrapUI]::Titles($FoobarPid))
+          Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_CONFIGURATION_TOP_LEVEL=' + ($titles -join ';'))
+          Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=DISPATCHED_READ_ONLY'
+          # No field text is entered here; the native action's configuration
+          # modal is deliberately closed without accepting or running it.
+          [void][NativeOriginalMasstaggerBootstrapUI]::CloseKnown($FoobarPid,'Set value')
+          [void][NativeOriginalMasstaggerBootstrapUI]::CloseKnown($FoobarPid,'Set value...')
+        }else{
+          Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=PENDING_NO_VERIFIED_MENU_COMMAND'
+        }
+
       }else{
         Write-Host 'MASSTAGGER_ORIGINAL_ADD_ACTION_MENU=PENDING_NO_POPUP_ITEMS'
       }
