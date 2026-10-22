@@ -35,6 +35,10 @@ $source = Join-Path $root 'track-01.mp3'
 $before = Join-Path $root 'track-01.mp3.before'
 $installer = $null
 $process = $null
+$priorDiscoggerQaDir = [Environment]::GetEnvironmentVariable('DISCOGGER_QA_MEDIA_DIR','Process')
+$discoggerQaDir = $null
+$discoggerQaMp3 = $null
+$discoggerQaBefore = $null
 
 try {
     $null = New-Item -ItemType Directory -Path $root
@@ -100,6 +104,17 @@ try {
         }
         Write-Host ('DISCOGGER_MODIFIED_CI_SOURCE_SHA=' + $env:DISCOGGER_MODIFIED_SOURCE_SHA)
         Write-Host ('DISCOGGER_MODIFIED_CI_BINARY_SHA256=' + (Get-FileHash -LiteralPath $draftDll -Algorithm SHA256).Hash)
+
+        # Discogger's genuine SDK file_info_manager runner-only writer needs
+        # its own separate synthetic MP3. It cannot reach user files or OAuth.
+        $discoggerQaDir = Join-Path $root 'discogger-physical-sdk-qa'
+        $null = New-Item -ItemType Directory -Path $discoggerQaDir
+        $discoggerQaMp3 = Join-Path $discoggerQaDir 'synthetic-metadata.mp3'
+        & python 'external/discogger-draft/tests/create-synthetic-mp3.py' $discoggerQaMp3
+        if ($LASTEXITCODE -ne 0) { throw 'Discogger pinned synthetic MP3 generator failed' }
+        $discoggerQaBefore = Join-Path $discoggerQaDir 'synthetic-metadata.mp3.before'
+        Copy-Item -LiteralPath $discoggerQaMp3 -Destination $discoggerQaBefore
+        [Environment]::SetEnvironmentVariable('DISCOGGER_QA_MEDIA_DIR',$discoggerQaDir,'Process')
     }
 
     & python tests/make_isolated_embedded_mp3.py $source
@@ -223,6 +238,49 @@ try {
             throw 'Modified Discogger context enumeration altered synthetic embedded-Cue media'
         }
         Write-Host "MODIFIED_DISCOGGER_PHYSICAL_CONTEXT_READ_ONLY_$Architecture=PASS"
+
+        # Actual Discogger-owned physical write, not the Metadata Isolation
+        # diagnostic writer: exercise the checked-out DLL's runner-only native
+        # SDK file_info_manager, with both actual components loaded.
+        # This is not an authenticated Discogs search or original GUI write.
+        $qaCompletion = Join-Path $discoggerQaDir 'qa-mp3-completed.txt'
+        if (Test-Path -LiteralPath $qaCompletion) {
+            throw 'Discogger co-load physical write completion marker already exists'
+        }
+        $qaLauncher = Start-Process -FilePath $exe -WorkingDirectory $portable -ArgumentList '/command:"Discogger QA MP3 write"' -PassThru
+        if (-not $qaLauncher.WaitForExit(15000) -or $qaLauncher.ExitCode -ne 0) {
+            throw 'Original foobar failed to dispatch real runner-only Discogger SDK writer'
+        }
+        $qaConfirmed = $false
+        for ($qaPoll = 0; $qaPoll -lt 160; $qaPoll++) {
+            if (Test-Path -LiteralPath $qaCompletion -PathType Leaf) {
+                $qaCount = (Get-Content -LiteralPath $qaCompletion -Raw).Trim()
+                if ($qaCount -ceq '1') {
+                    $qaConfirmed = $true
+                    break
+                }
+                if ($qaCount.Length -gt 0) {
+                    throw 'Discogger SDK physical completion marker is invalid'
+                }
+            }
+            $process.Refresh()
+            if ($process.HasExited) {
+                throw 'Original foobar exited before Discogger SDK physical writer completed'
+            }
+            Start-Sleep -Milliseconds 250
+        }
+        if (-not $qaConfirmed) {
+            throw 'No genuine Discogger SDK physical completion callback; no positive PASS'
+        }
+        & python 'external/discogger-draft/tests/verify-runner-physical-tags.py' $discoggerQaBefore $discoggerQaMp3
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Independent original Discogger MP3 physical tag/APIC/audio preservation oracle failed'
+        }
+        if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne
+            (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
+            throw 'Discogger-owned test write unexpectedly changed the separate embedded-Cue source'
+        }
+        Write-Host "MODIFIED_DISCOGGER_NATIVE_SDK_PHYSICAL_MP3_WRITE_COLOAD_$Architecture=PASS"
     }
 
     # This calls the real C++ production assess_physical_metadata() from the
@@ -528,6 +586,7 @@ try {
     }
 
 } finally {
+    [Environment]::SetEnvironmentVariable('DISCOGGER_QA_MEDIA_DIR',$priorDiscoggerQaDir,'Process')
     if ($null -ne $process) {
         try {
             if (-not $process.HasExited) {
