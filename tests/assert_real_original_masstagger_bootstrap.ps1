@@ -276,22 +276,14 @@ try{
 
         if(@($popup | Where-Object {$_ -ceq 'Set value...'}).Count -eq 1 -and
            [NativeOriginalMasstaggerBootstrapUI]::DispatchOriginalSetValueAction($dialog,$FoobarPid)){
-          # The third-party configuration window may appear asynchronously.
-          # Observe only bounded owned top-level titles, never edit field text.
-          $titles=@()
-          $newTitles=@()
-          for($configPoll=0;$configPoll -lt 25;$configPoll++){
-            Start-Sleep -Milliseconds 120
-            $titles=@([NativeOriginalMasstaggerBootstrapUI]::Titles($FoobarPid))
-            $newTitles=@($titles | Where-Object { $_ -cnotin $baseline })
-            if($newTitles.Count -gt 0){break}
-          }
+          # Verify the result of the exact original Set value menu click.
+          # Observe only window titles and redacted child control labels.
+          Start-Sleep -Milliseconds 650
+          $titles=@([NativeOriginalMasstaggerBootstrapUI]::Titles($FoobarPid))
           Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_CONFIGURATION_TOP_LEVEL=' + ($titles -join ';'))
-          Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_NEW_WINDOWS_COUNT=' + $newTitles.Count)
-          foreach($newTitle in $newTitles){
-            if($newTitle.Length -le 80 -and $newTitle -match '^[A-Za-z0-9 ._-]+@([NativeOriginalMasstaggerBootstrapUI]::Controls($dialog,$FoobarPid))
+          $updatedControls=@([NativeOriginalMasstaggerBootstrapUI]::Controls($dialog,$FoobarPid))
           Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL_COUNT=' + $updatedControls.Count)
-          foreach($item in $updatedControls){Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL=' + $item)}
+          foreach($entry in $updatedControls){Write-Host ('MASSTAGGER_ORIGINAL_SET_VALUE_AFTER_DISPATCH_CONTROL=' + $entry)}
           Write-Host 'MASSTAGGER_ORIGINAL_SET_VALUE_ACTION=GUARDED_REAL_INPUT_SENT_CONFIGURATION_PENDING'
           # No field text is entered here; the native action's configuration
           # modal is deliberately closed without accepting or running it.
