@@ -1,14 +1,25 @@
 #include "stdafx.h"
 #include "physical_targets.h"
 
+#include <set>
+#include <string>
+
 namespace metadata_isolation {
 namespace {
 
-bool same_source_path(const char* left, const char* right) {
-    int comparison = 0;
-    if (filesystem::g_compare_paths(left, right, comparison)) return comparison == 0;
-    return metadb::path_compare(left, right) == 0;
-}
+// Both operands have already passed g_get_canonical_path() and are local
+// physical sources. Preserve the existing filesystem-aware path comparison
+// (with the same metadb fallback) while avoiding quadratic scans of a large
+// selection of *distinct* files.
+struct physical_source_less {
+    bool operator()(const std::string& left, const std::string& right) const {
+        int comparison = 0;
+        if (filesystem::g_compare_paths(left.c_str(), right.c_str(), comparison)) {
+            return comparison < 0;
+        }
+        return metadb::path_compare(left.c_str(), right.c_str()) < 0;
+    }
+};
 
 void reject_target(
     physical_target_map& result,
@@ -27,6 +38,9 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
     physical_target_map result;
     result.input_count = selected.get_count();
 
+    // O(N log N) distinct-source deduplication, rather than N linear scans
+    // through previously created foobar handles.
+    std::set<std::string, physical_source_less> unique_physical_sources;
     for (const auto& item : selected) {
         const char* source_path = item->get_path();
         try {
@@ -49,15 +63,13 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
                 continue;
             }
 
-            bool duplicate = false;
-            for (const auto& existing : result.handles) {
-                if (same_source_path(existing->get_path(), canonical_path)) {
-                    duplicate = true;
-                    break;
-                }
-            }
-            if (!duplicate) {
+            const std::string key(canonical_path.c_str());
+            if (unique_physical_sources.find(key) == unique_physical_sources.end()) {
+                // Create and record a real physical handle before marking its
+                // canonical source as seen. A failed handle_create must not
+                // silently suppress a later valid selected track.
                 result.handles.add_item(metadb::get()->handle_create(canonical_path, 0));
+                unique_physical_sources.insert(key);
             }
         } catch (const std::exception& error) {
             reject_target(result, source_path, error.what());
