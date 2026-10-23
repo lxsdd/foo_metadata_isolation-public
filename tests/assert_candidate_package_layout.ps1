@@ -66,6 +66,14 @@ try {
   [IO.File]::WriteAllBytes($builtWin,$win)
   [IO.File]::WriteAllBytes($builtX64,$x64)
   $verified=New-TestPackage $normal
+  # The shared structural verifier must still infer exactly one root DLL
+  # when the product wrapper is called without an explicit component name.
+  $inferred=& ./ci/verify-metadata-isolation-component.ps1 -ComponentPath $verified
+  if($inferred.Status -cne 'PASS' -or $inferred.DllName -cne $rootDll -or
+     $inferred.PayloadMatchesBuild) {
+    throw 'Shared verifier delegation or unique DLL inference failed'
+  }
+  Write-Host 'CANDIDATE_SHARED_VERIFIER_INFERENCE=PASS'
   $proof=& ./ci/verify-metadata-isolation-component.ps1 -ComponentPath $verified -DllName $rootDll -ExpectedWin32DllPath $builtWin -ExpectedX64DllPath $builtX64
   if(-not $proof.PayloadMatchesBuild -or
      $proof.Win32DllSha256 -cne (Get-FileHash -LiteralPath $builtWin -Algorithm SHA256).Hash.ToLowerInvariant() -or
