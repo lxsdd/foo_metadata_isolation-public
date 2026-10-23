@@ -103,8 +103,8 @@ jobs:
       # Hard hold until explicit owner authorization: source qualification
       # on PRs and manual runs must not distribute candidate binaries.
       # Adopt reviewed source-only publication gate from Draft PR #7.
-      - name: Upload candidate (distribution currently on hold)
-        if: false # Candidate stays on ephemeral CI runner
+      - name: Upload candidate (held pending separate redistribution permission)
+        if: false # No public native component Actions artifact; build and validation remain active
         uses: actions/upload-artifact@v7
         with:
           name: foo_metadata_isolation-candidate-${{ github.sha }}

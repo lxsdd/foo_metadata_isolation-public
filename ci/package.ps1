@@ -35,7 +35,7 @@ New-Item -ItemType Directory -Path candidate | Out-Null
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $package=Join-Path $PWD "candidate/$ComponentId.fb2k-component"
 [IO.Compression.ZipFile]::CreateFromDirectory($stage,$package)
-$proof=& "$PSScriptRoot/verify-fb2k-component.ps1" -ComponentPath $package -DllName "$ComponentId.dll" -ExpectedWin32DllPath "$BuildRoot/build/$ComponentId.dll" -ExpectedX64DllPath "$BuildRoot/build/x64/$ComponentId.dll"
+$proof=& "$PSScriptRoot/verify-metadata-isolation-component.ps1" -ComponentPath $package -DllName "$ComponentId.dll" -ExpectedWin32DllPath "$BuildRoot/build/$ComponentId.dll" -ExpectedX64DllPath "$BuildRoot/build/x64/$ComponentId.dll"
 if(-not $proof.PayloadMatchesBuild) {throw 'Built DLL archive digest comparison is mandatory'}
 $hash=(Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant()
 @{commit=$checkoutSha;built_checkout_sha=$checkoutSha;source_head_sha=$prHead;checkout_kind=$checkoutKind;run_id=$env:GITHUB_RUN_ID;component="$ComponentId.fb2k-component";sha256=$hash;architectures=@('Win32','x64');runtime_acceptance='PENDING';release_authorized=$false;proof=$proof} | ConvertTo-Json -Depth 8 | Set-Content candidate/manifest.json

@@ -67,6 +67,18 @@ foreach ($file in $projectTextFiles) {
     }
 }
 
+
+# Single source owner: lxsdd/foobar2000_component_template, qualified by
+# PR #9 / Windows migration CI #39858103647. Verify exact GIT BLOB hash:
+# this intentionally does NOT claim that a raw SHA1 file digest equals Git SHA.
+$sharedVerifierBlob = '26fe194bdc429337a8ddc06e2e14ff6a9f03840d'
+$sharedVerifierPath = 'ci/verify-fb2k-component.ps1'
+$observedVerifierBlob = (& git hash-object -- $sharedVerifierPath).Trim()
+if ($LASTEXITCODE -ne 0 -or $observedVerifierBlob -cne $sharedVerifierBlob) {
+    throw "Canonical foobar component verifier drift: $sharedVerifierPath"
+}
+Write-Host 'SHARED_FOOBAR_COMPONENT_VERIFIER_SOURCE_PIN=PASS'
+
 if ($errors.Count -gt 0) {
     $errors | ForEach-Object { Write-Error $_ -ErrorAction Continue }
     throw "Project validation failed: $($errors.Count) finding(s)."

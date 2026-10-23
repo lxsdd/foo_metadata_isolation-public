@@ -39,7 +39,7 @@ function Check-Package([object[]]$entries,[bool]$shouldPass,[string]$label) {
   $path=New-TestPackage $entries
   $ok=$true
   try {
-    & ./ci/verify-fb2k-component.ps1 -ComponentPath $path -DllName $rootDll | Out-Null
+    & ./ci/verify-metadata-isolation-component.ps1 -ComponentPath $path -DllName $rootDll | Out-Null
   } catch { $ok=$false }
   if($ok -ne $shouldPass) {
     throw ("Package validation mismatch: {0}, wanted={1}, actual={2}" -f $label,$shouldPass,$ok)
@@ -66,7 +66,7 @@ try {
   [IO.File]::WriteAllBytes($builtWin,$win)
   [IO.File]::WriteAllBytes($builtX64,$x64)
   $verified=New-TestPackage $normal
-  $proof=& ./ci/verify-fb2k-component.ps1 -ComponentPath $verified -DllName $rootDll -ExpectedWin32DllPath $builtWin -ExpectedX64DllPath $builtX64
+  $proof=& ./ci/verify-metadata-isolation-component.ps1 -ComponentPath $verified -DllName $rootDll -ExpectedWin32DllPath $builtWin -ExpectedX64DllPath $builtX64
   if(-not $proof.PayloadMatchesBuild -or
      $proof.Win32DllSha256 -cne (Get-FileHash -LiteralPath $builtWin -Algorithm SHA256).Hash.ToLowerInvariant() -or
      $proof.X64DllSha256 -cne (Get-FileHash -LiteralPath $builtX64 -Algorithm SHA256).Hash.ToLowerInvariant()) {
@@ -76,7 +76,7 @@ try {
   function Reject-ExpectedDll([string]$case,[string]$expectedWin,[string]$expectedX64) {
     $rejected=$false
     try {
-      & ./ci/verify-fb2k-component.ps1 -ComponentPath $verified -DllName $rootDll -ExpectedWin32DllPath $expectedWin -ExpectedX64DllPath $expectedX64 | Out-Null
+      & ./ci/verify-metadata-isolation-component.ps1 -ComponentPath $verified -DllName $rootDll -ExpectedWin32DllPath $expectedWin -ExpectedX64DllPath $expectedX64 | Out-Null
     } catch { $rejected=$true }
     if(-not $rejected){throw ("Archive accepted forged or incomplete built-DLL provenance: "+$case)}
   }
@@ -93,7 +93,7 @@ try {
   Reject-ExpectedDll 'forged both architecture bytes' $badWin $badX64
   $rejected=$false
   try {
-    & ./ci/verify-fb2k-component.ps1 -ComponentPath $verified -DllName $rootDll -ExpectedWin32DllPath $builtWin | Out-Null
+    & ./ci/verify-metadata-isolation-component.ps1 -ComponentPath $verified -DllName $rootDll -ExpectedWin32DllPath $builtWin | Out-Null
   } catch { $rejected=$true }
   if(-not $rejected){throw 'Archive accepted one-sided expected build provenance'}
   Write-Host 'CANDIDATE_ZIP_BUILT_DLL_DIGEST_MUTATIONS=PASS (1 matched, 4 rejected)'
