@@ -281,6 +281,41 @@ try {
             throw 'Discogger-owned test write unexpectedly changed the separate embedded-Cue source'
         }
         Write-Host "MODIFIED_DISCOGGER_NATIVE_SDK_PHYSICAL_MP3_WRITE_COLOAD_$Architecture=PASS"
+        # The second identical Discogger-owned SDK request must be a true
+        # no-op even while Metadata Isolation is loaded in the same host.
+        # A callback alone is insufficient: verify both bytes and mtime.
+        $qaNoOpHash = (Get-FileHash -LiteralPath $discoggerQaMp3 -Algorithm SHA256).Hash
+        $qaNoOpTicks = (Get-Item -LiteralPath $discoggerQaMp3).LastWriteTimeUtc.Ticks
+        $qaNoOpLauncher = Start-Process -FilePath $exe -WorkingDirectory $portable -ArgumentList '/command:"Discogger QA MP3 write"' -PassThru
+        if (-not $qaNoOpLauncher.WaitForExit(15000) -or $qaNoOpLauncher.ExitCode -ne 0) {
+            throw 'Original foobar failed to dispatch identical Discogger SDK no-op'
+        }
+        $qaNoOpConfirmed = $false
+        for ($qaPoll = 0; $qaPoll -lt 160; $qaPoll++) {
+            if (Test-Path -LiteralPath $qaCompletion -PathType Leaf) {
+                $qaCount = (Get-Content -LiteralPath $qaCompletion -Raw).Trim()
+                if ($qaCount -ceq '2') {
+                    $qaNoOpConfirmed = $true
+                    break
+                }
+                if ($qaCount -cne '1') {
+                    throw 'Discogger SDK no-op completion marker is invalid'
+                }
+            }
+            $process.Refresh()
+            if ($process.HasExited) {
+                throw 'Original foobar exited before identical Discogger SDK no-op completed'
+            }
+            Start-Sleep -Milliseconds 250
+        }
+        if (-not $qaNoOpConfirmed) {
+            throw 'No genuine Discogger SDK identical no-op completion callback'
+        }
+        if ((Get-FileHash -LiteralPath $discoggerQaMp3 -Algorithm SHA256).Hash -ne $qaNoOpHash -or
+            (Get-Item -LiteralPath $discoggerQaMp3).LastWriteTimeUtc.Ticks -ne $qaNoOpTicks) {
+            throw 'Identical Discogger SDK operation rewrote physical MP3 during co-load'
+        }
+        Write-Host "MODIFIED_DISCOGGER_NATIVE_SDK_PHYSICAL_MP3_NOOP_COLOAD_$Architecture=PASS"
     }
 
     # This calls the real C++ production assess_physical_metadata() from the
