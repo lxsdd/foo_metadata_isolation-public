@@ -723,9 +723,10 @@ public:
         // Native ListView rows are exposed via MSAA, but the hosted Windows
         // UIA provider may expose zero ListItem/DataItem children. Mirror the
         // selected row's essential metadata to an ordinary read-only Windows
-        // EDIT control with real UIA ValuePattern support. Screenreader users
-        // can Tab to and read/copy the currently selected result without
-        // depending on inaccessible provider-specific ListView children.
+        // EDIT control. It exposes native text and MSAA value semantics, so
+        // keyboard users can Tab to and copy the selected result even where
+        // the host UIA provider does not expose ListView children or an EDIT
+        // ValuePattern. Do not claim full UIA/screen-reader qualification.
         if (m_accessible_detail == nullptr || !IsWindow(m_accessible_detail)) return;
         pfc::string_formatter detail;
         const int count = ListView_GetSelectedCount(m_list);
