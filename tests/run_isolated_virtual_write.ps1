@@ -12,7 +12,8 @@ param(
     [switch]$RunRealAuditUia,
     [switch]$RunRealTimingUia,
     [string]$CompanionDiscoggerDll,
-    [string]$CompanionDiscoggerConfigDb
+    [string]$CompanionDiscoggerConfigDb,
+    [string]$CompanionStudioDll
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -78,6 +79,22 @@ try {
     Copy-Item -LiteralPath $component -Destination (Join-Path $components 'foo_metadata_isolation.dll')
 
     $discoggerCoLoad = -not [string]::IsNullOrWhiteSpace($CompanionDiscoggerDll)
+    $studioCoLoad = -not [string]::IsNullOrWhiteSpace($CompanionStudioDll)
+    if ($studioCoLoad) {
+        if (-not $discoggerCoLoad) { throw 'Three-component host test requires modified Discogger too' }
+        if ($env:MMS_PINNED_SOURCE_SHA -cne '220b9d6bb031423905845f840e698b92d1af1a3c') {
+            throw 'Studio source pin was not independently verified by the workflow'
+        }
+        $studioDll = (Resolve-Path -LiteralPath $CompanionStudioDll -ErrorAction Stop).Path
+        $studioRoot = (Resolve-Path -LiteralPath (Join-Path (Get-Location) 'external/studio-draft')).Path
+        if ([IO.Path]::GetFileName($studioDll) -cne 'foo_music_metadata_studio.dll' -or
+            -not $studioDll.StartsWith($studioRoot + [IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Unexpected Studio binary outside independently pinned disposable source build'
+        }
+        Copy-Item -LiteralPath $studioDll -Destination (Join-Path $components 'foo_music_metadata_studio.dll')
+        Write-Host ('MMS_PINNED_CI_SOURCE_SHA=' + $env:MMS_PINNED_SOURCE_SHA)
+        Write-Host ('MMS_PINNED_CI_BINARY_SHA256=' + (Get-FileHash -LiteralPath $studioDll -Algorithm SHA256).Hash)
+    }
     if ($discoggerCoLoad) {
         if ([string]::IsNullOrWhiteSpace($CompanionDiscoggerConfigDb)) {
             throw 'Modified Discogger co-load requires its independently sourced SQLite sidecar'
@@ -186,6 +203,22 @@ try {
             throw 'Modified Discogger failed bounded portable SQLite initialization; no co-load PASS'
         }
         Write-Host "MODIFIED_DISCOGGER_AND_METADATA_ISOLATION_HOST_COLOAD_$Architecture=PASS"
+    }
+    if ($studioCoLoad) {
+        $studioReady = $false
+        for ($try=0; $try -lt 50; $try++) {
+            $process.Refresh()
+            if ($process.HasExited) { throw 'Three-component foobar host terminated unexpectedly' }
+            try {
+                $seen = @((Get-Process -Id $process.Id -ErrorAction Stop).Modules |
+                    Where-Object { $_.ModuleName -ieq 'foo_music_metadata_studio.dll' -and
+                        $_.FileName.StartsWith($portable,[StringComparison]::OrdinalIgnoreCase) })
+                if ($seen.Count -eq 1) { $studioReady = $true; break }
+            } catch [System.ComponentModel.Win32Exception] {}
+            Start-Sleep -Milliseconds 250
+        }
+        if (-not $studioReady) { throw 'Genuine foobar host did not load pinned Studio component' }
+        Write-Host "MMS_DISCOGGER_METADATA_ISOLATION_TRI_COLOAD_$Architecture=PASS"
     }
 
     function Invoke-IsolatedProbe([string]$token) {

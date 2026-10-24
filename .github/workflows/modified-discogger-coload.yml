@@ -1,4 +1,4 @@
-name: Modified Discogger + Metadata Isolation original foobar co-load (test-only)
+name: Modified Discogger + Metadata Isolation + Studio original foobar co-load (test-only)
 
 on:
   pull_request:
@@ -41,6 +41,13 @@ jobs:
           ref: 30f15c438d2eb5d9ecaa3637222348a061d4dec5
           path: external/discogger-draft
           persist-credentials: false
+      - name: Pinned current Music Metadata Studio draft checkout
+        uses: actions/checkout@v4
+        with:
+          repository: lxsdd/music-metadata-studio
+          ref: 220b9d6bb031423905845f840e698b92d1af1a3c
+          path: external/studio-draft
+          persist-credentials: false
       - name: Exact reviewed SDK template for Metadata Isolation
         uses: actions/checkout@v4
         with:
@@ -54,6 +61,13 @@ jobs:
           repository: lxsdd/foobar2000_component_template
           ref: 31a35947a7527826c2199491692802e3ce3d8bd7
           path: external/discogger-draft/external/sdk-template
+          persist-credentials: false
+      - name: Exact reviewed SDK template for Studio
+        uses: actions/checkout@v4
+        with:
+          repository: lxsdd/foobar2000_component_template
+          ref: 31a35947a7527826c2199491692802e3ce3d8bd7
+          path: external/studio-draft/external/sdk-template
           persist-credentials: false
       - name: Immutable pinned original foobar installer transport
         uses: actions/checkout@v4
@@ -69,11 +83,14 @@ jobs:
           $ErrorActionPreference='Stop'
           $expected='30f15c438d2eb5d9ecaa3637222348a061d4dec5'
           if((& git -C external/discogger-draft rev-parse HEAD).Trim() -cne $expected){throw 'Modified Discogger source SHA mismatch'}
+          $studioExpected='220b9d6bb031423905845f840e698b92d1af1a3c'
+          if((& git -C external/studio-draft rev-parse HEAD).Trim() -cne $studioExpected){throw 'Studio source SHA mismatch'}
           & python scripts/verify-public-artifact-hold.py
           if($LASTEXITCODE -ne 0){throw 'Source-only artifact hold failed'}
           & python tests/verify_source_release_provenance.py
           if($LASTEXITCODE -ne 0){throw 'Source provenance failed'}
           Write-Host 'MODIFIED_DISCOGGER_SOURCE_SHA=PASS_EXACT_PIN'
+          Write-Host 'MMS_SOURCE_SHA=PASS_EXACT_PIN'
       - name: Stage all verified Discogger dependencies and build actual DLL
         shell: pwsh
         working-directory: external/discogger-draft
@@ -87,6 +104,16 @@ jobs:
           $dll=Join-Path $env:RUNNER_TEMP 'discogger-sdk-probe/foobar2000/foo_discogger/${{ matrix.architecture }}/Release/foo_discogger.dll'
           if(-not (Test-Path -LiteralPath $dll -PathType Leaf)){throw 'Runner-only modified Discogger DLL missing'}
           Write-Host 'MODIFIED_DISCOGGER_ACTUAL_DLL_${{ matrix.architecture }}=PASS'
+      - name: Build pinned Studio default read-only component DLL
+        shell: pwsh
+        working-directory: external/studio-draft
+        run: |
+          $ErrorActionPreference='Stop'
+          ./scripts/build-foobar.ps1 -Platform '${{ matrix.architecture }}' -Configuration Release -PlatformToolset v143
+          if($LASTEXITCODE -ne 0){throw 'Studio build failed'}
+          $dll=Join-Path (Get-Location) 'out/foobar/${{ matrix.architecture }}/Release/foo_music_metadata_studio.dll'
+          if(-not (Test-Path -LiteralPath $dll -PathType Leaf)){throw 'Pinned default Studio DLL missing'}
+          Write-Host 'MMS_ACTUAL_DEFAULT_READONLY_DLL_${{ matrix.architecture }}=PASS'
       - name: Build the exact Metadata Isolation HEAD with verified SDK
         shell: pwsh
         run: |
@@ -98,16 +125,19 @@ jobs:
           $env:CL='/I"' + $wtl + '" ' + $env:CL
           & msbuild component.sln /t:Build /p:Configuration=Release /p:Platform=${{ matrix.architecture }} /p:EnableTestProbes=true /p:PlatformToolset=v143 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
           if($LASTEXITCODE -ne 0){throw 'Metadata Isolation build failed'}
-      - name: Real original Win32/x64 co-load and synthetic physical safety
+      - name: Real original Win32/x64 three-component co-load and synthetic physical safety
         shell: pwsh
         env:
           DISCOGGER_MODIFIED_SOURCE_SHA: 30f15c438d2eb5d9ecaa3637222348a061d4dec5
+          MMS_PINNED_SOURCE_SHA: 220b9d6bb031423905845f840e698b92d1af1a3c
         run: |
           $ErrorActionPreference='Stop'
           $arch='${{ matrix.architecture }}'
           $metadata=if($arch -eq 'Win32'){'build/foo_metadata_isolation.dll'}else{'build/x64/foo_metadata_isolation.dll'}
           $discDll=Join-Path $env:RUNNER_TEMP "discogger-sdk-probe/foobar2000/foo_discogger/$arch/Release/foo_discogger.dll"
-          ./tests/run_isolated_virtual_write.ps1 -Architecture $arch -ComponentDll $metadata -CompanionDiscoggerDll $discDll -CompanionDiscoggerConfigDb 'external/discogger-draft/foo_discogger.dll.db' -RunPhysicalMetadata -RunDirectGuard
-          if($LASTEXITCODE -ne 0){throw 'Original foobar two-component host qualification failed'}
+          $studioDll=Join-Path (Get-Location) "external/studio-draft/out/foobar/$arch/Release/foo_music_metadata_studio.dll"
+          ./tests/run_isolated_virtual_write.ps1 -Architecture $arch -ComponentDll $metadata -CompanionDiscoggerDll $discDll -CompanionDiscoggerConfigDb 'external/discogger-draft/foo_discogger.dll.db' -CompanionStudioDll $studioDll -RunPhysicalMetadata -RunDirectGuard
+          if($LASTEXITCODE -ne 0){throw 'Original foobar three-component host qualification failed'}
           Write-Host "MODIFIED_DISCOGGER_PHYSICAL_ISOLATION_COLOAD_$arch=PASS"
+          Write-Host "PINNED_STUDIO_DISCOGGER_ISOLATION_PHYSICAL_GUARDS_$arch=PASS"
       # Absolutely no upload-artifact, caches, OAuth secrets or user files.
