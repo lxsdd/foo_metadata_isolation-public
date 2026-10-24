@@ -238,6 +238,28 @@ try {
             throw 'Real Masstagger embedded Cue CLI produced unobserved source change'
         }
         Write-Host ("REAL_HOST_MASSTAGGER_193_EMBEDDED_CUE_CLI_NO_WRITE_BYTE_EXACT_$Architecture=PASS")
+        # Preserve the independent legacy #42 negative UI oracle AFTER the Cue
+        # /tag attempt. The read-only Manage Scripts probe now intentionally runs
+        # before that attempt so guard modals cannot block its CLI dispatch.
+        # This observed cardinality is separate from media byte-integrity and
+        # from a positive physical Masstagger UI commit.
+        $guardNames=@()
+        for($guardAttempt=0;$guardAttempt -lt 30;$guardAttempt++){
+            $process.Refresh()
+            if($process.HasExited){throw 'Native host exited while observing Cue virtual write guards'}
+            $guardNames=@([OriginalMasstaggerUiDiscovery]::WindowTitles($process.Id) |
+                Where-Object { $_ -ceq 'Metadata Isolation: write blocked' })
+            if($guardNames.Count -eq 2){break}
+            Start-Sleep -Milliseconds 100
+        }
+        Write-Host ("MASSTAGGER_REAL_NATIVE_DIRECT_VIRTUAL_GUARD_DIALOG_COUNT_$Architecture=" + $guardNames.Count)
+        if($guardNames.Count -ne 2){
+            throw 'Genuine Masstagger two-track Cue no-op lacks two expected native write-blocked dialogs'
+        }
+        if((Get-FileHash -LiteralPath $cueSource -Algorithm SHA256 -ErrorAction Stop).Hash -cne $cueSha){
+            throw 'Genuine two-track guarded Cue media changed after two-dialog observation'
+        }
+        Write-Host ("MASSTAGGER_GENUINE_EMBEDDED_CUE_DIRECT_VIRTUAL_WRITE_GUARD_NATIVE_TWO_DIALOGS_$Architecture=PASS")
         Write-Host 'MASSTAGGER_EMBEDDED_CUE_PHYSICAL_NON_NOOP=PENDING_EXPLICIT_PHYSICAL_UI_WORKFLOW'
     }else{
         & python tests/assert_masstagger_embedded_cue_physical.py $cueBefore $cueSource $cueExpectedComment
