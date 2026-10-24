@@ -4,7 +4,9 @@
 #include "ui_tooltips.h"
 #include "physical_targets.h"
 #include "physical_metadata_audit.h"
+#include "physical_metadata_audit_ui.h"
 #include "preferences.h"
+#include "write_guard.h"
 #include "virtual_edit_session.h"
 #include "ui_scaling.h"
 
@@ -27,6 +29,8 @@ enum class probe_mode {
     virtual_custom,
     virtual_nochange,
     virtual_all_titles,
+    direct_guard_virtual_title,
+    open_real_virtual_timing_dialog,
     chapterizer_title,
     physical_title,
     physical_all,
@@ -36,8 +40,13 @@ enum class probe_mode {
     physical_raw_cue_patch,
     map_physical,
     map_physical_with_duplicate,
+    map_physical_with_case_alias,
+    map_physical_with_unicode_case_alias,
+    map_physical_with_hardlink_alias,
     map_physical_with_remote,
+    map_physical_with_remote_first,
     map_all_handles_physical,
+    map_many_distinct_physical,
     context_tree_physical,
     run_masstagger_physical,
     run_discogger_physical,
@@ -153,6 +162,7 @@ enum class probe_mode {
     projection_benchmark_inventory,
     physical_audit_classifier,
     logging_contract,
+    audit_internal_ui_state,
     logging_outcomes,
     logging_standard,
     logging_verbose,
@@ -201,6 +211,8 @@ bool parse_probe_mode(const char* token, probe_mode& mode) {
         { "/metadata-isolation-probe-custom", probe_mode::virtual_custom },
         { "/metadata-isolation-probe-nochange", probe_mode::virtual_nochange },
         { "/metadata-isolation-probe-all-titles", probe_mode::virtual_all_titles },
+        { "/metadata-isolation-probe-direct-guard-virtual-title", probe_mode::direct_guard_virtual_title },
+        { "/metadata-isolation-probe-open-real-virtual-timing", probe_mode::open_real_virtual_timing_dialog },
         { "/metadata-isolation-probe-chapterizer-title", probe_mode::chapterizer_title },
         { "/metadata-isolation-probe-physical-title", probe_mode::physical_title },
         { "/metadata-isolation-probe-physical-all", probe_mode::physical_all },
@@ -210,8 +222,13 @@ bool parse_probe_mode(const char* token, probe_mode& mode) {
         { "/metadata-isolation-probe-physical-raw-cue-patch", probe_mode::physical_raw_cue_patch },
         { "/metadata-isolation-probe-map-physical", probe_mode::map_physical },
         { "/metadata-isolation-probe-map-physical-duplicate", probe_mode::map_physical_with_duplicate },
+        { "/metadata-isolation-probe-map-physical-case-alias", probe_mode::map_physical_with_case_alias },
+        { "/metadata-isolation-probe-map-physical-unicode-case-alias", probe_mode::map_physical_with_unicode_case_alias },
+        { "/metadata-isolation-probe-map-physical-hardlink-alias", probe_mode::map_physical_with_hardlink_alias },
         { "/metadata-isolation-probe-map-physical-remote", probe_mode::map_physical_with_remote },
+        { "/metadata-isolation-probe-map-physical-remote-first", probe_mode::map_physical_with_remote_first },
         { "/metadata-isolation-probe-map-all-handles-physical", probe_mode::map_all_handles_physical },
+        { "/metadata-isolation-probe-map-111-distinct-physical", probe_mode::map_many_distinct_physical },
         { "/metadata-isolation-probe-context-tree-physical", probe_mode::context_tree_physical },
         { "/metadata-isolation-probe-run-masstagger-physical", probe_mode::run_masstagger_physical },
         { "/metadata-isolation-probe-run-discogger-physical", probe_mode::run_discogger_physical },
@@ -327,6 +344,7 @@ bool parse_probe_mode(const char* token, probe_mode& mode) {
         { "/metadata-isolation-probe-projection-benchmark-inventory", probe_mode::projection_benchmark_inventory },
         { "/metadata-isolation-probe-physical-audit-classifier", probe_mode::physical_audit_classifier },
         { "/metadata-isolation-probe-logging-contract", probe_mode::logging_contract },
+        { "/metadata-isolation-probe-audit-internal-ui-state", probe_mode::audit_internal_ui_state },
         { "/metadata-isolation-probe-logging-outcomes", probe_mode::logging_outcomes },
         { "/metadata-isolation-probe-logging-standard", probe_mode::logging_standard },
         { "/metadata-isolation-probe-logging-verbose", probe_mode::logging_verbose },
@@ -503,6 +521,35 @@ void run_physical_audit_classifier_probe(const char* report_source_path) {
     const size_t genre = review.meta_set("GENRE", "Trance");
     review.meta_add_value(genre, "House");
     append_case(report, "review", assess_physical_metadata(review, cue));
+
+    // Real production classifier regression: an ambiguous physical value
+    // needs explicit REVIEW even if a different required tag is missing.
+    file_info_impl review_incomplete;
+    fill_complete(review_incomplete);
+    review_incomplete.meta_remove_field("DATE");
+    const size_t incomplete_genre = review_incomplete.meta_set("GENRE", "Trance");
+    review_incomplete.meta_add_value(incomplete_genre, "House");
+    append_case(report, "review_incomplete",
+                assess_physical_metadata(review_incomplete, cue));
+
+    // Duplicate global Cue directives require REVIEW even on an entirely
+    // empty physical tag set. Insert before FILE, never inside a TRACK.
+    std::string ambiguous_cue = cue;
+    const size_t before_file = ambiguous_cue.find(R"(FILE "dummy.wav" WAVE)");
+    if (before_file == std::string::npos) {
+        throw pfc::exception("Synthetic Cue classifier fixture is malformed");
+    }
+    ambiguous_cue.insert(before_file, "REM GENRE House\r\n");
+    append_case(report, "review_empty_cue_ambiguous",
+                assess_physical_metadata(empty, ambiguous_cue));
+
+    // A simple difference must not incorrectly override INCOMPLETE.
+    file_info_impl mismatch_incomplete;
+    fill_complete(mismatch_incomplete);
+    mismatch_incomplete.meta_remove_field("DATE");
+    mismatch_incomplete.meta_set("GENRE", "House");
+    append_case(report, "mismatch_incomplete",
+                assess_physical_metadata(mismatch_incomplete, cue));
 
     report << "write_result=read_only_classifier\n";
     write_report(report_source_path, report);
@@ -833,6 +880,48 @@ public:
         for (size_t index = 0; index < m_items.get_count(); ++index) {
             report << "handle_" << index << "_subsong="
                    << m_items[index]->get_subsong_index() << "\n";
+        }
+
+        if (m_mode == probe_mode::open_real_virtual_timing_dialog) {
+            // Built exclusively into the disposable CI probe component.
+            // Open the real production editor only for a uniquely marked
+            // synthetic three-track source. No simulated postimage or write.
+            try {
+                static constexpr char fixture_marker[] =
+                    "MI-DISPOSABLE-FOOBAR-TIMING-UI-V1";
+                pfc::string_formatter marker_path;
+                marker_path << path << ".metadata-isolation-timing-ui-fixture.txt";
+                file::ptr marker;
+                filesystem::g_open_read(marker, marker_path, fb2k::noAbort);
+                if (marker->get_size_ex(fb2k::noAbort) != sizeof(fixture_marker) - 1) {
+                    throw pfc::exception("Timing UI requires exact disposable fixture marker");
+                }
+                char actual[sizeof(fixture_marker)] = {};
+                marker->read_object(actual, sizeof(fixture_marker) - 1, fb2k::noAbort);
+                if (std::memcmp(actual, fixture_marker, sizeof(fixture_marker) - 1) != 0 ||
+                    pfc::stricmp_ascii(pfc::string_extension(path), "mp3") != 0 ||
+                    !cfg_enabled) {
+                    throw pfc::exception("Timing UI probe refuses unmarked or unprotected source");
+                }
+                input_info_reader::ptr source;
+                input_entry::g_open_for_info_read(source, nullptr, path, fb2k::noAbort);
+                if (source->get_subsong_count() != 3 || source->get_subsong(1) != 2) {
+                    throw pfc::exception("Timing UI fixture is not the expected three-track Cue");
+                }
+                file_info_impl virtual_info;
+                source->get_info(2, virtual_info, fb2k::noAbort);
+                const char* title = virtual_info.meta_get("TITLE", 0);
+                if (title == nullptr || std::strcmp(title, "Virtual Original Two") != 0) {
+                    throw pfc::exception("Timing UI fixture virtual preimage is unexpected");
+                }
+                source.release();
+                metadb_handle_list selected;
+                selected.add_item(metadb::get()->handle_create(path, 2));
+                edit_virtual_timing(selected);
+            } catch (const std::exception& error) {
+                FB2K_console_formatter() << "Metadata Isolation disposable timing UI probe rejected: " << error;
+            }
+            return;
         }
 
         if (m_mode == probe_mode::physical_audit_classifier) {
@@ -1364,6 +1453,9 @@ public:
                     report << "structured_log=" << line.c_str() << "\n";
                 }
                 report << "write_result=logging_outcomes_complete\n";
+            } else if (m_mode == probe_mode::audit_internal_ui_state) {
+                read_audit_internal_state_for_test(report);
+                report << "write_result=audit_internal_state_readonly\n";
             } else if (m_mode == probe_mode::logging_contract) {
                 const char* unicode_value =
                     "Gr" "\xC3\xBC" "\xC3\x9F" "e-"
@@ -1416,6 +1508,18 @@ public:
                        << (tooltip.texts_match ? "true" : "false") << "\n"
                        << "tooltip_distinct_mapping="
                        << (tooltip.distinct_mapping ? "true" : "false") << "\n"
+                       << "tooltip_parent_visible="
+                       << (tooltip.parent_visible ? "true" : "false") << "\n"
+                       << "tooltip_parent_foreground="
+                       << (tooltip.parent_foreground ? "true" : "false") << "\n"
+                       << "tooltip_cursor_inside="
+                       << (tooltip.cursor_inside ? "true" : "false") << "\n"
+                       << "tooltip_mouse_event_sent="
+                       << (tooltip.mouse_event_sent ? "true" : "false") << "\n"
+                       << "tooltip_current_tool_present="
+                       << (tooltip.current_tool_present ? "true" : "false") << "\n"
+                       << "tooltip_forced_popup_visible="
+                       << (tooltip.forced_popup_visible ? "true" : "false") << "\n"
                        << "tooltip_hover_appeared="
                        << (tooltip.hover_appeared ? "true" : "false") << "\n"
                        << "tooltip_hover_dismissed="
@@ -1649,14 +1753,69 @@ public:
                 }
             } else if (m_mode == probe_mode::map_physical ||
                 m_mode == probe_mode::map_physical_with_duplicate ||
+                m_mode == probe_mode::map_physical_with_case_alias ||
+                m_mode == probe_mode::map_physical_with_unicode_case_alias ||
+                m_mode == probe_mode::map_physical_with_hardlink_alias ||
                 m_mode == probe_mode::map_physical_with_remote ||
-                m_mode == probe_mode::map_all_handles_physical) {
+                m_mode == probe_mode::map_physical_with_remote_first ||
+                m_mode == probe_mode::map_all_handles_physical ||
+                m_mode == probe_mode::map_many_distinct_physical) {
                 metadb_handle_list mapped_items = m_items;
                 if (m_mode == probe_mode::map_physical_with_duplicate) {
                     mapped_items.add_item(metadb::get()->handle_create(path, 0));
+                } else if (m_mode == probe_mode::map_physical_with_case_alias) {
+                    // The same disposable Windows file must not become two
+                    // physical write targets solely due to path letter casing.
+                    // Exercise the production filesystem-aware set comparator.
+                    std::string alias(path);
+                    constexpr char leaf[] = "track-01.mp3";
+                    if (!alias.ends_with(leaf)) {
+                        throw pfc::exception("Case-alias probe requires track-01.mp3 fixture");
+                    }
+                    alias.replace(alias.size() - sizeof(leaf) + 1, sizeof(leaf) - 1,
+                                  "TRACK-01.MP3");
+                    report << "mapping_alias_path=" << alias.c_str() << "\n";
+                    mapped_items.add_item(metadb::get()->handle_create(alias.c_str(), 0));
+                } else if (m_mode == probe_mode::map_physical_with_unicode_case_alias) {
+                    // On normal Windows filesystems the runner-created
+                    // directory Ähre and ähre designate the same physical
+                    // directory. Check actual Unicode case handling, without
+                    // touching real user music or normal component builds.
+                    std::string alias(path);
+                    const std::string upper = "\xC3\x84" "hre";
+                    const std::string lower = "\xC3\xA4" "hre";
+                    const size_t found = alias.rfind(upper);
+                    if (found == std::string::npos ||
+                        !alias.ends_with("track-01.mp3")) {
+                        throw pfc::exception("Unicode case-alias probe requires Ähre fixture.");
+                    }
+                    alias.replace(found, upper.size(), lower);
+                    report << "mapping_alias_path=" << alias.c_str() << "\n";
+                    mapped_items.add_item(metadb::get()->handle_create(alias.c_str(), 0));
+                } else if (m_mode == probe_mode::map_physical_with_hardlink_alias) {
+                    // A genuine second filename for the same disposable MP3,
+                    // created by the PowerShell runner with New-Item HardLink.
+                    // This must collapse by real file identity, not spelling.
+                    std::string alias(path);
+                    constexpr char original_leaf[] = "track-01.mp3";
+                    if (!alias.ends_with(original_leaf)) {
+                        throw pfc::exception("Hardlink probe requires track-01.mp3 fixture.");
+                    }
+                    alias.replace(alias.size() - sizeof(original_leaf) + 1,
+                                  sizeof(original_leaf) - 1,
+                                  "track-01-hardlink.mp3");
+                    report << "mapping_alias_path=" << alias.c_str() << "\n";
+                    mapped_items.add_item(metadb::get()->handle_create(alias.c_str(), 0));
                 } else if (m_mode == probe_mode::map_physical_with_remote) {
                     mapped_items.add_item(metadb::get()->handle_create(
                         "http://127.0.0.1/metadata-isolation-unsupported.mp3", 0));
+                } else if (m_mode == probe_mode::map_physical_with_remote_first) {
+                    // A rejected first item must not hide a later valid local
+                    // physical target or make the overall selection complete.
+                    mapped_items.remove_all();
+                    mapped_items.add_item(metadb::get()->handle_create(
+                        "http://127.0.0.1/metadata-isolation-unsupported.mp3", 0));
+                    mapped_items.add_item(metadb::get()->handle_create(path, 0));
                 } else if (m_mode == probe_mode::map_all_handles_physical) {
                     mapped_items.remove_all();
                     for (size_t source = 0; source < m_items.get_count(); ++source) {
@@ -1672,6 +1831,37 @@ public:
                             }
                         }
                     }
+                }
+                if (m_mode == probe_mode::map_many_distinct_physical) {
+                    // Source-only CI test: caller places 111 disposable MP3 files
+                    // named track-01 through track-111 in one private runner
+                    // directory. No files or metadata are ever written here.
+                    const std::string source(path);
+                    constexpr const char* known_leaf = "track-01.mp3";
+                    if (!source.ends_with(known_leaf)) {
+                        throw pfc::exception("Unexpected many-source test fixture name");
+                    }
+                    const std::string folder = source.substr(
+                        0, source.size() - std::strlen(known_leaf));
+                    mapped_items.remove_all();
+                    // Reverse first appearance deliberately: a set must not
+                    // accidentally reorder the physical handle output.
+                    for (int i = 111; i >= 1; --i) {
+                        const std::string leaf = std::string("track-") +
+                            (i < 10 ? "0" : "") + std::to_string(i) + ".mp3";
+                        mapped_items.add_item(metadb::get()->handle_create(
+                            (folder + leaf).c_str(), 0));
+                    }
+                    for (int i = 111; i >= 1; --i) {
+                        const std::string leaf = std::string("track-") +
+                            (i < 10 ? "0" : "") + std::to_string(i) + ".mp3";
+                        mapped_items.add_item(metadb::get()->handle_create(
+                            (folder + leaf).c_str(), 0));
+                    }
+                    // The source fixture genuinely contains two virtual Cue
+                    // subsongs. Both must collapse onto its physical source.
+                    mapped_items.add_item(metadb::get()->handle_create(path, 1));
+                    mapped_items.add_item(metadb::get()->handle_create(path, 2));
                 }
                 const physical_target_map mapping = map_to_physical_targets(mapped_items);
                 report << "mapping_input_count=" << mapping.input_count << "\n";
@@ -1771,6 +1961,95 @@ public:
                     append_info_inventory(report, phase.c_str(), 0, postimage);
                 }
                 report << "write_result=physical_batch_committed\n";
+            } else if (m_mode == probe_mode::direct_guard_virtual_title) {
+                // Test-only command, compiled solely with EnableTestProbes=true.
+                // Never use on anything except a create-only disposable runner fixture.
+                // This deliberately exercises the native, unsafe host input writer
+                // without the isolated-shadow pathway; the Write Guard must veto it.
+                // Independent create-only test marker lives beside the exact source.
+                // A path-name heuristic is not sufficient because foobar may
+                // canonicalize or URL-encode paths before creating a handle.
+                static constexpr char fixture_marker[] = "MI-DISPOSABLE-FOOBAR-GUARD-V1";
+                pfc::string_formatter marker_path;
+                marker_path << path << ".metadata-isolation-guard-fixture.txt";
+                bool disposable_fixture = false;
+                try {
+                    file::ptr marker;
+                    filesystem::g_open_read(marker, marker_path, fb2k::noAbort);
+                    if (marker->get_size_ex(fb2k::noAbort) == sizeof(fixture_marker) - 1) {
+                        char readback[sizeof(fixture_marker)] = {};
+                        marker->read_object(readback, sizeof(fixture_marker) - 1, fb2k::noAbort);
+                        disposable_fixture =
+                            std::memcmp(readback, fixture_marker, sizeof(fixture_marker) - 1) == 0;
+                    }
+                } catch (const std::exception&) {
+                    disposable_fixture = false;
+                }
+                const char* extension = pfc::string_extension(path);
+                const bool supported_mp3 = pfc::stricmp_ascii(extension, "mp3") == 0;
+                const bool guard_enabled = cfg_enabled;
+                report << "direct_guard_disposable_fixture="
+                       << (disposable_fixture ? "true" : "false") << "\n"
+                       << "direct_guard_mp3_extension="
+                       << (supported_mp3 ? "true" : "false") << "\n"
+                       << "direct_guard_cfg_enabled="
+                       << (guard_enabled ? "true" : "false") << "\n";
+                if (!disposable_fixture || !supported_mp3 || !guard_enabled) {
+                    throw pfc::exception("Direct Guard probe preconditions failed; refusing unsafe write");
+                }
+                input_info_reader::ptr inventory;
+                input_entry::g_open_for_info_read(inventory, nullptr, path, fb2k::noAbort);
+                bool track_one_found = false;
+                for (unsigned i = 0; i < inventory->get_subsong_count(); ++i) {
+                    if (inventory->get_subsong(i) == 1) track_one_found = true;
+                }
+                if (!track_one_found) throw pfc::exception("Disposable source has no embedded Cue subsong 1");
+                file_info_impl pre;
+                inventory->get_info(1, pre, fb2k::noAbort);
+                pfc::string8 expected(pre.meta_get("TITLE", 0));
+                if (expected != "Virtual Original One") {
+                    throw pfc::exception("Unexpected virtual preimage in direct Guard probe");
+                }
+                inventory.release();
+
+                const char* attempted = "Direct Unsafe Probe MUST NOT COMMIT";
+                report << "direct_guard_subsong=1\n"
+                       << "direct_guard_title_before=" << expected << "\n"
+                       << "direct_guard_title_attempted=" << attempted << "\n"
+                       << "direct_guard_protection_before="
+                       << protection_status_name(get_protection_status()) << "\n";
+                auto lock = file_lock_manager::get()->acquire_write(path, fb2k::noAbort);
+                try {
+                    input_info_writer::ptr writer;
+                    input_entry::g_open_for_info_write_timeout(
+                        writer, nullptr, path, fb2k::noAbort, 1.0);
+                    file_info_impl updated;
+                    writer->get_info(1, updated, fb2k::noAbort);
+                    updated.meta_set("TITLE", attempted);
+                    report << "direct_guard_write_attempted=true\n";
+                    writer->set_info(1, updated, fb2k::noAbort);
+                    writer->commit(fb2k::noAbort);
+                    report << "direct_guard_commit_returned=true\n";
+                    writer.release();
+                } catch (const std::exception& error) {
+                    // An exception is a valid guard outcome, but never an excuse
+                    // to declare PASS without checking the source byte-for-byte.
+                    report << "direct_guard_commit_returned=false\n"
+                           << "direct_guard_writer_exception=" << error.what() << "\n";
+                }
+                lock.release();
+                input_info_reader::ptr reloaded;
+                input_entry::g_open_for_info_read(reloaded, nullptr, path, fb2k::noAbort);
+                file_info_impl after;
+                reloaded->get_info(1, after, fb2k::noAbort);
+                const char* title_after = after.meta_get("TITLE", 0);
+                report << "direct_guard_title_after="
+                       << (title_after == nullptr ? "<missing>" : title_after) << "\n"
+                       << "direct_guard_protection_after="
+                       << protection_status_name(get_protection_status()) << "\n"
+                       << "write_result="
+                       << (title_after != nullptr && expected == title_after ?
+                           "guard_preserved" : "unsafe_mutation") << "\n";
             } else if (m_mode == probe_mode::physical_title ||
                        m_mode == probe_mode::physical_all ||
                        m_mode == probe_mode::physical_album_artist ||
@@ -1882,6 +2161,116 @@ private:
 };
 
 commandline_handler_factory_t<probe_commandline_handler> g_probe_factory;
+
+#if defined(_WIN32) && defined(MI_REAL_MASSTAGGER_NATIVE_UI_BOOTSTRAP)
+// Test-only fixed status markers; never record paths, filenames or tag values.
+// The trace is private to RUNNER_TEMP, not included in build artifacts.
+static void mi_original_masstagger_trace(const char* phase) {
+    char runner[8192] = {};
+    const DWORD n = GetEnvironmentVariableA("RUNNER_TEMP", runner, sizeof(runner));
+    if (n == 0 || n >= sizeof(runner)) return;
+    std::string root(runner);
+    while (!root.empty() && (root.back() == '\\' || root.back() == '/')) root.pop_back();
+    if (root.empty()) return;
+    const std::string destination = root + "\\mi-original-masstagger-bootstrap-trace.txt";
+    HANDLE output = CreateFileA(destination.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
+        nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (output == INVALID_HANDLE_VALUE) return;
+    DWORD written = 0;
+    WriteFile(output, phase, static_cast<DWORD>(std::strlen(phase)), &written, nullptr);
+    WriteFile(output, "\n", 1, &written, nullptr);
+    CloseHandle(output);
+}
+// CI ONLY. Compiled exclusively with the isolated genuine-Masstagger workflow;
+// not part of release, candidate, or ordinary foobar component builds.
+// This routes through the ORIGINAL third-party SDK context command, never
+// imitates its dialog or implements its metadata writer.
+class original_masstagger_native_ui_bootstrap : public initquit {
+public:
+    void on_init() override {
+        char actions[8] = {};
+        char runner[8192] = {};
+        char requested[8192] = {};
+        if (GetEnvironmentVariableA("GITHUB_ACTIONS", actions, sizeof(actions)) == 0 ||
+            std::strcmp(actions, "true") != 0) return;
+        mi_original_masstagger_trace("INIT_ENTERED");
+        const DWORD root_length = GetEnvironmentVariableA(
+            "RUNNER_TEMP", runner, sizeof(runner));
+        const DWORD input_length = GetEnvironmentVariableA(
+            "MI_REAL_ORIGINAL_MASSTAGGER_UI_FILE", requested, sizeof(requested));
+        if (input_length == 0) { mi_original_masstagger_trace("NO_FIXTURE_ENV"); return; }
+        if (root_length == 0 || root_length >= sizeof(runner) ||
+            input_length >= sizeof(requested)) { mi_original_masstagger_trace("INVALID_ENV_LENGTH"); return; }
+        char canonical[8192] = {};
+        const DWORD full_length = GetFullPathNameA(
+            requested, sizeof(canonical), canonical, nullptr);
+        if (full_length == 0 || full_length >= sizeof(canonical)) { mi_original_masstagger_trace("INVALID_CANONICAL_PATH"); return; }
+        const size_t prefix_length = std::strlen(runner);
+        const std::string path(canonical);
+        const std::string required = "\\embedded-cue-masstagger\\track-01.mp3";
+        if (path.size() <= prefix_length + required.size() ||
+            _strnicmp(path.c_str(), runner, prefix_length) != 0 ||
+            (path[prefix_length] != '\\' && path[prefix_length] != '/') ||
+            _stricmp(path.c_str() + path.size() - required.size(), required.c_str()) != 0) {
+            mi_original_masstagger_trace("REFUSED_PATH_SCOPE");
+            FB2K_console_formatter() << "Metadata Isolation CI-only native UI bootstrap refused untrusted path";
+            return;
+        }
+        const DWORD attr = GetFileAttributesA(path.c_str());
+        if (attr == INVALID_FILE_ATTRIBUTES ||
+            (attr & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0) { mi_original_masstagger_trace("REFUSED_FILE_ATTRIBUTES"); return; }
+
+        mi_original_masstagger_trace("SCHEDULED_MAIN_THREAD");
+        fb2k::inMainThread([path] {
+            mi_original_masstagger_trace("CALLBACK_ENTERED");
+            pfc::string_formatter report;
+            report << "native_original_masstagger_bootstrap=true\n";
+            try {
+                input_info_reader::ptr reader;
+                input_entry::g_open_for_info_read(reader, nullptr, path.c_str(), fb2k::noAbort);
+                if (reader->get_subsong_count() != 2) {
+                    mi_original_masstagger_trace("INVALID_SYNTHETIC_SUBSONGS");
+                    report << "write_result=invalid_synthetic_subsong_count\n";
+                } else {
+                    reader.release();
+                    metadb_handle_list physical;
+                    physical.add_item(metadb::get()->handle_create(path.c_str(), 0));
+                    contextmenu_manager::ptr context = contextmenu_manager::g_create();
+                    context->init_context_ex(
+                        physical, contextmenu_manager::flag_view_full,
+                        contextmenu_item::caller_undefined);
+                    contextmenu_node* original = find_context_command(
+                        context->get_root(), "Manage scripts");
+                    if (original == nullptr) {
+                        mi_original_masstagger_trace("ORIGINAL_COMMAND_NOT_FOUND");
+                        report << "write_result=original_masstagger_command_not_found\n";
+                    } else {
+                        report << "native_original_context_executed=Manage scripts\n";
+                        mi_original_masstagger_trace("ORIGINAL_COMMAND_EXECUTE_ENTERED");
+                        original->execute();
+                        mi_original_masstagger_trace("ORIGINAL_COMMAND_EXECUTE_RETURNED");
+                        report << "write_result=original_ui_returned\n";
+                    }
+                }
+            } catch (const std::exception&) {
+                // Never log arbitrary source paths, tag contents or exception
+                // details even though the only admitted test data is synthetic.
+                mi_original_masstagger_trace("BOOTSTRAP_EXCEPTION");
+                report << "write_result=original_native_bootstrap_exception\n";
+            }
+            try { write_report(path.c_str(), report); mi_original_masstagger_trace("REPORT_WRITTEN"); }
+            catch (const std::exception&) { mi_original_masstagger_trace("REPORT_WRITE_FAILED");
+                FB2K_console_formatter() << "Metadata Isolation native UI bootstrap report could not be written";
+            }
+        });
+    }
+    void on_quit() override {}
+};
+initquit_factory_t<original_masstagger_native_ui_bootstrap>
+    g_original_masstagger_native_ui_bootstrap;
+#endif
+
+
 
 class probe_generic_shadow_command : public contextmenu_item_simple {
 public:
