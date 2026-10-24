@@ -1,0 +1,67 @@
+name: Native foobar SDK 2026-10-01 compatibility (source-only)
+
+on:
+  pull_request:
+    paths:
+      - 'ci/test-latest-sdk.ps1'
+      - '.github/workflows/sdk-2026-10-01-compat.yml'
+      - 'src/**'
+      - 'component.sln'
+      - 'component.props'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sdk-compatibility:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - name: Checkout exact shared owner SDK source 2026-10-01
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/foobar2000_component_template
+          ref: 31a35947a7527826c2199491692802e3ce3d8bd7
+          path: external/sdk-template
+          persist-credentials: false
+      - uses: microsoft/setup-msbuild@v2
+      - name: Parse non-destructive CI-only staging script
+        shell: pwsh
+        run: |
+          $errors=$null; $tokens=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path (Get-Location) 'ci/test-latest-sdk.ps1'), [ref]$tokens, [ref]$errors)
+          if ($errors.Count) { throw ($errors | Out-String) }
+      - name: Stage latest SDK source without any vendor .7z download
+        shell: pwsh
+        run: ./ci/test-latest-sdk.ps1
+      - name: Compile real metadata isolation component Win32 and x64 against new SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./validate_project.ps1
+          # SDK 2026-10-01 helper project newly includes atlapp.h; the
+          # separately redistributable existing WTL headers are not inside SDK.
+          $wtl = Join-Path (Get-Location) 'wtl/Include'
+          if (-not (Test-Path -LiteralPath (Join-Path $wtl 'atlapp.h'))) {
+            throw 'Pinned WTL header missing: atlapp.h'
+          }
+          $env:CL = '/I"' + $wtl + '" ' + $env:CL
+          foreach ($platform in @('Win32','x64')) {
+            & msbuild component.sln /t:Build /p:Configuration=Release "/p:Platform=$platform" /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
+            if ($LASTEXITCODE -ne 0) { throw "SDK_2026_10_01_NATIVE_$platform=FAIL" }
+            Write-Host "SDK_2026_10_01_NATIVE_$platform=PASS"
+          }
+          Write-Host 'CUE_WRITER_E2E=NOT_TESTED (requires separate synthetic CUE/physical preservation fixture)'
+      - name: HARD GATE - real foobar2000 Win32 loads current-SDK Metadata Isolation DLL
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec
+        with:
+          architecture: Win32
+          component-dll: build/foo_metadata_isolation.dll
+      - name: HARD GATE - real foobar2000 x64 loads current-SDK Metadata Isolation DLL
+        uses: lxsdd/dev-infrastructure-public/.github/actions/foobar-host-smoke@35369054c56f4c6ccb2f802944e9675852fd35ec
+        with:
+          architecture: x64
+          component-dll: build/x64/foo_metadata_isolation.dll

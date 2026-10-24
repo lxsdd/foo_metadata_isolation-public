@@ -11,12 +11,27 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Checkout pinned foobar SDK 2026-10-01 for eventual manual candidate
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/foobar2000_component_template
+          ref: 31a35947a7527826c2199491692802e3ce3d8bd7
+          path: external/sdk-template
+          persist-credentials: false
+      - name: Verify and stage current SDK (CI workspace only)
+        shell: pwsh
+        run: ./ci/test-latest-sdk.ps1
       - uses: microsoft/setup-msbuild@v2
       - name: Validate repository and build both architectures
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           ./validate_project.ps1
+          $wtl = Join-Path (Get-Location) 'wtl/Include'
+          if (-not (Test-Path -LiteralPath (Join-Path $wtl 'atlapp.h') -PathType Leaf)) {
+            throw 'Required WTL header atlapp.h absent for SDK 2026-10-01 helpers'
+          }
+          $env:CL = '/I"' + $wtl + '" ' + $env:CL
           foreach($platform in @('Win32','x64')) {
             & msbuild 'component.sln' /t:Build /p:Configuration=Release /p:Platform=$platform /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
             if($LASTEXITCODE -ne 0){throw "Build failed: $platform"}
