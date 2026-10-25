@@ -114,11 +114,15 @@ def assert_path_alias_collision_policy() -> None:
         if any(candidate.count(anchor) != 1 for anchor in anchors):
             return False
         canonical = candidate.split(canonical_start, 1)[1].split(canonical_end, 1)[0]
+        # The canonical-alias and byte-identical-repeat branches have separate
+        # rejection gates. Count only the alias branch here; the second is
+        # independently mutation-tested below.
+        canonical_alias = canonical.split("} else {", 1)[0]
         case = candidate.split(case_start, 1)[1].split(case_end, 1)[0]
         return (
-            canonical.count(canonical_outer) == 1
-            and canonical.count(canonical_reject) == 1
-            and canonical.count("reject_target(") == 1
+            canonical_alias.count(canonical_outer) == 1
+            and canonical_alias.count(canonical_reject) == 1
+            and canonical_alias.count("reject_target(") == 1
             and canonical.count("continue;") == 1
             and "Equivalent source path could not be verified as the same physical file." in canonical
             and case.count(case_outer) == 1
@@ -153,9 +157,71 @@ def assert_path_alias_collision_policy() -> None:
                 f"{label}: dangerous mutation was not detected")
 
 
+def assert_repeated_canonical_path_identity_policy() -> None:
+    """A repeated path must not hide a retargeted file during selection.
+
+    The positive same-file case is exercised by the genuine Win32/x64
+    duplicate-selection host oracle. Repointing the file *during* mapping
+    is not deterministic on CI, so the negative branch is mutation-tested.
+    """
+    source = (Path(__file__).resolve().parents[1] /
+              "src/foo_metadata_isolation/physical_targets.cpp").read_text(encoding="utf-8")
+    start = "const auto original = unique_physical_sources.find(key);"
+    end = "const std::wstring unicode_native = unicode_path_from_utf8(native);"
+    storage = "canonical_file_id_lookup.emplace(key, file_id);"
+    direct_reject = (
+        'if (previous_id == canonical_file_id_lookup.end() ||\\n'
+        '                        !(current_duplicate_id == previous_id->second)) {\\n'
+        '                        reject_target('
+    )
+    # The exact source is a safety contract: a second identical canonical
+    # spelling must be checked against the *first* file identity, not just
+    # filesystem::equivalent(path, path), which always checks the latest file.
+    def guarded(candidate: str) -> bool:
+        if any(candidate.count(anchor) != 1 for anchor in (start, end, storage)):
+            return False
+        region = candidate.split(start, 1)[1].split(end, 1)[0]
+        if region.count("} else {") != 1:
+            return False
+        repeat = region.split("} else {", 1)[1]
+        return (
+            "canonical_file_id_lookup.find(*original)" in repeat
+            and "read_physical_file_identity(unicode_path_from_utf8(native))" in repeat
+            and repeat.count(direct_reject) == 1
+            and repeat.count("reject_target(") == 1
+            and "Repeated canonical path no longer identifies the original physical file." in repeat
+            and region.count("continue;") == 1
+            and candidate.index(storage) > candidate.index("result.handles.add_item(")
+        )
+
+    require(guarded(source), "Repeated canonical path lacks a physical-identity recheck")
+    mutations = (
+        ("identity comparison removed",
+         "!(current_duplicate_id == previous_id->second)",
+         "false"),
+        ("read-only identity probe removed",
+         "read_physical_file_identity(unicode_path_from_utf8(native))",
+         "physical_file_identity{}"),
+        ("identity recording removed",
+         storage,
+         "canonical_file_id_lookup.clear();"),
+        ("identity rejection removed",
+         direct_reject,
+         direct_reject.replace("reject_target(", "ignore_target(")),
+        ("identity rejection made unreachable",
+         direct_reject,
+         direct_reject.replace("reject_target(", "if (false) { reject_target(")),
+    )
+    for label, original, mutated in mutations:
+        require(source.count(original) == 1, f"{label}: source anchor not unique")
+        require(not guarded(source.replace(original, mutated, 1)),
+                f"{label}: dangerous mutation was not detected")
+
+
 def main() -> None:
     assert_file_identity_collision_policy()
     assert_path_alias_collision_policy()
+    assert_repeated_canonical_path_identity_policy()
     parser = argparse.ArgumentParser()
     parser.add_argument("report", type=Path)
     parser.add_argument("baseline", type=Path)
