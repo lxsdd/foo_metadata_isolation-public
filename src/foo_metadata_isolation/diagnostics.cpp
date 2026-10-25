@@ -984,7 +984,9 @@ public:
                 } else {
                     report << "chapterizer_present=false\n";
                 }
-                report << "write_result=inventory_only\n";
+                report << "inventory_protection_after="
+                       << protection_status_name(get_protection_status()) << "\n"
+                       << "write_result=inventory_only\n";
             } else if (m_mode == probe_mode::projection_benchmark ||
                 m_mode == probe_mode::projection_benchmark_inventory) {
                 metadb_handle_list virtual_tracks;

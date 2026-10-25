@@ -9,7 +9,8 @@
 namespace metadata_isolation {
 namespace {
 
-std::atomic_bool g_filter_callback_observed = false;
+// Historical evidence of an actual blocked unsafe write, never of a read callback.
+std::atomic_bool g_unsafe_virtual_write_block_observed = false;
 
 bool is_unsafe_embedded_cue_subsong(const playable_location& location) {
     if (location.get_subsong() == 0) return false;
@@ -25,20 +26,21 @@ public:
         const playable_location&,
         file_info&,
         abort_callback&) override {
-        g_filter_callback_observed.store(true, std::memory_order_relaxed);
     }
 
     bool filter_info_write(
         const playable_location& location,
         file_info& info,
         abort_callback&) override {
-        g_filter_callback_observed.store(true, std::memory_order_relaxed);
         if (!cfg_enabled || !is_unsafe_embedded_cue_subsong(location)) return true;
         // A registered session shadow is already isolated from the original.
         // Capture the writer's exact semantic postimage, but suppress its
         // destructive Cue serialization so all projected subsongs continue to
         // observe the same immutable backing document during the command.
-        if (capture_virtual_shadow_write(location, info)) return false;
+        if (capture_virtual_shadow_write(location, info)) {
+            g_unsafe_virtual_write_block_observed.store(true, std::memory_order_relaxed);
+            return false;
+        }
 
         fb2k::inMainThread([] {
             popup_message::g_show(
@@ -49,6 +51,7 @@ public:
                 "No change was written.",
                 "Metadata Isolation: write blocked");
         });
+        g_unsafe_virtual_write_block_observed.store(true, std::memory_order_relaxed);
         return false;
     }
 
@@ -70,7 +73,7 @@ service_factory_single_t<unsafe_subsong_write_guard> g_write_guard_factory;
 
 protection_status get_protection_status() {
     if (!cfg_enabled) return protection_status::inactive;
-    if (g_filter_callback_observed.load(std::memory_order_relaxed)) {
+    if (g_unsafe_virtual_write_block_observed.load(std::memory_order_relaxed)) {
         return protection_status::active;
     }
     return protection_status::unknown;

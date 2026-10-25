@@ -249,6 +249,10 @@ try {
     if ($inventoryText -notmatch '(?m)^inventory_subsong_count=2\s*$') {
         throw "Fixture was not exposed as two embedded virtual tracks: $inventoryText"
     }
+    # A read-only inventory must never certify a blocked unsafe write.
+    if ($inventoryText -notmatch '(?m)^inventory_protection_after=UNKNOWN\s*$') {
+        throw "Read-only inventory incorrectly promoted write-block status: $inventoryText"
+    }
     if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne
         (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
         throw 'Read-only inventory changed the physical MP3'
