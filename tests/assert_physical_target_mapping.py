@@ -231,8 +231,9 @@ def assert_repeated_canonical_path_identity_policy() -> None:
          "!(current_duplicate_id == previous_id->second)",
          "false"),
         ("read-only identity probe removed",
-         "read_physical_file_identity(unicode_path_from_utf8(native))",
-         "physical_file_identity{}"),
+         "const physical_file_identity current_duplicate_id =\n"
+         "                        read_physical_file_identity(unicode_path_from_utf8(native));",
+         "const physical_file_identity current_duplicate_id = physical_file_identity{};"),
         ("identity recording removed",
          storage,
          "canonical_file_id_lookup.clear();"),
