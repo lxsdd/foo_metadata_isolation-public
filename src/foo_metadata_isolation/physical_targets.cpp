@@ -134,6 +134,9 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
     // underlying target can change while the selection is being resolved.
     std::map<std::string, physical_file_identity, physical_source_less> canonical_file_id_lookup;
     std::map<std::wstring, std::string, windows_path_case_less> canonical_case_lookup;
+    // Capture the identity at first mapping; checking two *current* aliases
+    // alone would miss a file replaced after the original was selected.
+    std::map<std::wstring, physical_file_identity, windows_path_case_less> canonical_case_file_id_lookup;
     std::map<physical_file_identity, std::string> seen_physical_file_ids;
     for (const auto& item : selected) {
         const char* source_path = item->get_path();
@@ -166,7 +169,12 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
                 // is the same on a case-sensitive Windows directory.
                 if (*original != key) {
                     const auto previously_mapped = canonical_native_lookup.find(*original);
+                    const auto previous_id = canonical_file_id_lookup.find(*original);
+                    const physical_file_identity current_alias_id =
+                        read_physical_file_identity(unicode_path_from_utf8(native));
                     if (previously_mapped == canonical_native_lookup.end() ||
+                        previous_id == canonical_file_id_lookup.end() ||
+                        !(current_alias_id == previous_id->second) ||
                         !same_physical_file(native, previously_mapped->second)) {
                         reject_target(
                             result, source_path,
@@ -192,7 +200,12 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
             const std::wstring unicode_native = unicode_path_from_utf8(native);
             const auto collision = canonical_case_lookup.find(unicode_native);
             if (collision != canonical_case_lookup.end()) {
-                if (!same_physical_file(native, collision->second)) {
+                const auto previous_case_id = canonical_case_file_id_lookup.find(unicode_native);
+                const physical_file_identity current_case_id =
+                    read_physical_file_identity(unicode_native);
+                if (previous_case_id == canonical_case_file_id_lookup.end() ||
+                    !(current_case_id == previous_case_id->second) ||
+                    !same_physical_file(native, collision->second)) {
                     reject_target(
                         result, source_path,
                         "Case-only source alias could not be verified as the same physical file.");
@@ -230,6 +243,7 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
             canonical_native_lookup.emplace(key, native);
             canonical_file_id_lookup.emplace(key, file_id);
             canonical_case_lookup.emplace(unicode_native, native);
+            canonical_case_file_id_lookup.emplace(unicode_native, file_id);
             seen_physical_file_ids.emplace(file_id, native);
         } catch (const std::exception& error) {
             reject_target(result, source_path, error.what());
