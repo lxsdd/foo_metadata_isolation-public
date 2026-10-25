@@ -31,7 +31,40 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def assert_file_identity_collision_policy() -> None:
+    """Static negative guard alongside the real Windows hardlink runtime oracle.
+
+    A native file-ID collision cannot be reliably generated on hosted NTFS;
+    this is not a claim of a ReFS collision runtime test.
+    """
+    source = (Path(__file__).resolve().parents[1] /
+              "src/foo_metadata_isolation/physical_targets.cpp").read_text(encoding="utf-8")
+    begin = "const auto known_identity = seen_physical_file_ids.find(file_id);"
+    end = "// Add the handle before marking source as mapped."
+    equivalence = "if (!same_physical_file(native, known_identity->second)) {"
+
+    def guarded(candidate: str) -> bool:
+        if candidate.count(begin) != 1 or candidate.count(end) != 1:
+            return False
+        region = candidate.split(begin, 1)[1].split(end, 1)[0]
+        return (region.count("if (known_identity != seen_physical_file_ids.end()) {") == 1
+                and region.count(equivalence) == 1
+                and region.count("reject_target(") == 1
+                and region.index(equivalence) < region.index("reject_target(")
+                and "continue;" in region)
+
+    require(guarded(source), "Duplicate reported file ID lacks a fail-closed equivalence gate")
+    require(not guarded(source.replace(equivalence, "if (false) {", 1)),
+            "Mutation control failed: equivalence gate removal went undetected")
+    first, rest = source.split(begin, 1)
+    region, last = rest.split(end, 1)
+    missing_reject = first + begin + region.replace("reject_target(", "ignore_target(", 1) + end + last
+    require(not guarded(missing_reject),
+            "Mutation control failed: missing collision rejection went undetected")
+
+
 def main() -> None:
+    assert_file_identity_collision_policy()
     parser = argparse.ArgumentParser()
     parser.add_argument("report", type=Path)
     parser.add_argument("baseline", type=Path)
