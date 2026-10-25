@@ -100,13 +100,17 @@ def assert_path_alias_collision_policy() -> None:
     canonical_outer = "if (*original != key) {\n                    const auto previously_mapped"
     canonical_reject = (
         "if (previously_mapped == canonical_native_lookup.end() ||\n"
+        "                        previous_id == canonical_file_id_lookup.end() ||\n"
+        "                        !(current_alias_id == previous_id->second) ||\n"
         "                        !same_physical_file(native, previously_mapped->second)) {\n"
         "                        reject_target(")
     case_outer = (
         "if (collision != canonical_case_lookup.end()) {\n"
-        "                if (!same_physical_file")
+        "                const auto previous_case_id"
     case_reject = (
-        "if (!same_physical_file(native, collision->second)) {\n"
+        "if (previous_case_id == canonical_case_file_id_lookup.end() ||\n"
+        "                    !(current_case_id == previous_case_id->second) ||\n"
+        "                    !same_physical_file(native, collision->second)) {\n"
         "                    reject_target(")
 
     def guarded(candidate: str) -> bool:
@@ -122,11 +126,16 @@ def assert_path_alias_collision_policy() -> None:
         return (
             canonical_alias.count(canonical_outer) == 1
             and canonical_alias.count(canonical_reject) == 1
+            and canonical_alias.count("canonical_file_id_lookup.find(*original)") == 1
+            and canonical_alias.count("read_physical_file_identity(unicode_path_from_utf8(native))") == 1
             and canonical_alias.count("reject_target(") == 1
             and canonical.count("continue;") == 1
             and "Equivalent source path could not be verified as the same physical file." in canonical
             and case.count(case_outer) == 1
             and case.count(case_reject) == 1
+            and case.count("canonical_case_file_id_lookup.find(unicode_native)") == 1
+            and case.count("read_physical_file_identity(unicode_native)") == 1
+            and candidate.count("canonical_case_file_id_lookup.emplace(unicode_native, file_id);") == 1
             and case.count("reject_target(") == 1
             and case.count("continue;") == 1
             and "Case-only source alias could not be verified as the same physical file." in case
@@ -138,6 +147,12 @@ def assert_path_alias_collision_policy() -> None:
          canonical_outer.replace("if (*original != key)", "if (false)")),
         ("canonical comparator equivalence", canonical_reject,
          canonical_reject.replace("!same_physical_file(native, previously_mapped->second)", "false")),
+        ("canonical alias captured identity bypass", canonical_reject,
+         canonical_reject.replace("!(current_alias_id == previous_id->second)", "false")),
+        ("canonical alias first identity lookup removed",
+         "canonical_file_id_lookup.find(*original)", "canonical_file_id_lookup.end()"),
+        ("canonical alias identity probe removed",
+         "read_physical_file_identity(unicode_path_from_utf8(native))", "physical_file_identity{}"),
         ("canonical comparator rejection", canonical_reject,
          canonical_reject.replace("reject_target(", "ignore_target(")),
         ("canonical unreachable nested rejection", canonical_reject,
@@ -146,6 +161,15 @@ def assert_path_alias_collision_policy() -> None:
          case_outer.replace("collision != canonical_case_lookup.end()", "false")),
         ("Unicode case collision equivalence", case_reject,
          case_reject.replace("!same_physical_file(native, collision->second)", "false")),
+        ("Unicode case captured identity bypass", case_reject,
+         case_reject.replace("!(current_case_id == previous_case_id->second)", "false")),
+        ("Unicode case original identity lookup removed",
+         "canonical_case_file_id_lookup.find(unicode_native)", "canonical_case_file_id_lookup.end()"),
+        ("Unicode case identity probe removed",
+         "read_physical_file_identity(unicode_native)", "physical_file_identity{}"),
+        ("Unicode case captured identity storage removed",
+         "canonical_case_file_id_lookup.emplace(unicode_native, file_id);",
+         "canonical_case_file_id_lookup.clear();"),
         ("Unicode case collision rejection", case_reject,
          case_reject.replace("reject_target(", "ignore_target(")),
         ("Unicode case unreachable nested rejection", case_reject,
