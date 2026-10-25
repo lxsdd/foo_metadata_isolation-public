@@ -83,8 +83,79 @@ def assert_file_identity_collision_policy() -> None:
             "Mutation control failed: unreachable collision rejection went undetected")
 
 
+def assert_path_alias_collision_policy() -> None:
+    """Reject ambiguous comparator/Unicode aliases rather than silently skip them.
+
+    Real Windows runtime tests exercise *valid* case aliases and hardlinks.
+    These negative mutations independently guard the two rejection branches
+    for different physical files that cannot be manufactured reliably in CI.
+    This is static reachability evidence, not a case-sensitive-volume test.
+    """
+    source = (Path(__file__).resolve().parents[1] /
+              "src/foo_metadata_isolation/physical_targets.cpp").read_text(encoding="utf-8")
+    canonical_start = "const auto original = unique_physical_sources.find(key);"
+    canonical_end = "const std::wstring unicode_native = unicode_path_from_utf8(native);"
+    case_start = "const auto collision = canonical_case_lookup.find(unicode_native);"
+    case_end = "// Distinct filenames and hardlinks can refer to one physical file,"
+    canonical_outer = "if (*original != key) {\n                    const auto previously_mapped"
+    canonical_reject = (
+        "if (previously_mapped == canonical_native_lookup.end() ||\n"
+        "                        !same_physical_file(native, previously_mapped->second)) {\n"
+        "                        reject_target(")
+    case_outer = (
+        "if (collision != canonical_case_lookup.end()) {\n"
+        "                if (!same_physical_file")
+    case_reject = (
+        "if (!same_physical_file(native, collision->second)) {\n"
+        "                    reject_target(")
+
+    def guarded(candidate: str) -> bool:
+        anchors = (canonical_start, canonical_end, case_start, case_end)
+        if any(candidate.count(anchor) != 1 for anchor in anchors):
+            return False
+        canonical = candidate.split(canonical_start, 1)[1].split(canonical_end, 1)[0]
+        case = candidate.split(case_start, 1)[1].split(case_end, 1)[0]
+        return (
+            canonical.count(canonical_outer) == 1
+            and canonical.count(canonical_reject) == 1
+            and canonical.count("reject_target(") == 1
+            and canonical.count("continue;") == 1
+            and "Equivalent source path could not be verified as the same physical file." in canonical
+            and case.count(case_outer) == 1
+            and case.count(case_reject) == 1
+            and case.count("reject_target(") == 1
+            and case.count("continue;") == 1
+            and "Case-only source alias could not be verified as the same physical file." in case
+        )
+
+    require(guarded(source), "Physical path aliases lack both direct fail-closed rejection gates")
+    mutations = (
+        ("canonical comparator outer branch", canonical_outer,
+         canonical_outer.replace("if (*original != key)", "if (false)")),
+        ("canonical comparator equivalence", canonical_reject,
+         canonical_reject.replace("!same_physical_file(native, previously_mapped->second)", "false")),
+        ("canonical comparator rejection", canonical_reject,
+         canonical_reject.replace("reject_target(", "ignore_target(")),
+        ("canonical unreachable nested rejection", canonical_reject,
+         canonical_reject.replace("reject_target(", "if (false) { reject_target(")),
+        ("Unicode case collision outer branch", case_outer,
+         case_outer.replace("collision != canonical_case_lookup.end()", "false")),
+        ("Unicode case collision equivalence", case_reject,
+         case_reject.replace("!same_physical_file(native, collision->second)", "false")),
+        ("Unicode case collision rejection", case_reject,
+         case_reject.replace("reject_target(", "ignore_target(")),
+        ("Unicode case unreachable nested rejection", case_reject,
+         case_reject.replace("reject_target(", "if (false) { reject_target(")),
+    )
+    for label, original, mutation in mutations:
+        require(source.count(original) == 1, f"{label}: source anchor not unique")
+        require(not guarded(source.replace(original, mutation, 1)),
+                f"{label}: dangerous mutation was not detected")
+
+
 def main() -> None:
     assert_file_identity_collision_policy()
+    assert_path_alias_collision_policy()
     parser = argparse.ArgumentParser()
     parser.add_argument("report", type=Path)
     parser.add_argument("baseline", type=Path)
