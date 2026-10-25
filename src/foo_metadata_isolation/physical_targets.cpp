@@ -188,7 +188,18 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
             // distinct names in a multi-selection.
             const physical_file_identity file_id =
                 read_physical_file_identity(unicode_native);
-            if (seen_physical_file_ids.find(file_id) != seen_physical_file_ids.end()) {
+            const auto known_identity = seen_physical_file_ids.find(file_id);
+            if (known_identity != seen_physical_file_ids.end()) {
+                // An identical reported file ID is not by itself proof that
+                // two different names resolve to the same file (for example,
+                // on a filesystem with a wider native identity). Never
+                // silently omit a selected physical target on an ambiguous
+                // identity: fail the entire delegated write selection closed.
+                if (!same_physical_file(native, known_identity->second)) {
+                    reject_target(
+                        result, source_path,
+                        "Matching file ID could not be verified as the same physical file.");
+                }
                 continue;
             }
 
