@@ -77,6 +77,10 @@ struct physical_file_identity {
     DWORD volume_serial = 0;
     DWORD file_index_high = 0;
     DWORD file_index_low = 0;
+    bool operator==(const physical_file_identity& other) const noexcept {
+        return std::tie(volume_serial, file_index_high, file_index_low) ==
+            std::tie(other.volume_serial, other.file_index_high, other.file_index_low);
+    }
     bool operator<(const physical_file_identity& other) const noexcept {
         return std::tie(volume_serial, file_index_high, file_index_low) <
             std::tie(other.volume_serial, other.file_index_high, other.file_index_low);
@@ -126,6 +130,9 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
     // non-byte-identical duplicate proves actual file identity. This also
     // handles the rare case-sensitive Windows directory without writing.
     std::map<std::string, std::string, physical_source_less> canonical_native_lookup;
+    // A repeated canonical string is not a permanent file identity: its
+    // underlying target can change while the selection is being resolved.
+    std::map<std::string, physical_file_identity, physical_source_less> canonical_file_id_lookup;
     std::map<std::wstring, std::string, windows_path_case_less> canonical_case_lookup;
     std::map<physical_file_identity, std::string> seen_physical_file_ids;
     for (const auto& item : selected) {
@@ -164,6 +171,19 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
                         reject_target(
                             result, source_path,
                             "Equivalent source path could not be verified as the same physical file.");
+                    }
+                } else {
+                    // Even a byte-identical canonical path may have been
+                    // replaced/repointed since its first occurrence. Never
+                    // silently drop a second selected file on that basis.
+                    const auto previous_id = canonical_file_id_lookup.find(*original);
+                    const physical_file_identity current_duplicate_id =
+                        read_physical_file_identity(unicode_path_from_utf8(native));
+                    if (previous_id == canonical_file_id_lookup.end() ||
+                        !(current_duplicate_id == previous_id->second)) {
+                        reject_target(
+                            result, source_path,
+                            "Repeated canonical path no longer identifies the original physical file.");
                     }
                 }
                 continue;
@@ -208,6 +228,7 @@ physical_target_map map_to_physical_targets(metadb_handle_list_cref selected) {
             result.handles.add_item(metadb::get()->handle_create(canonical_path, 0));
             unique_physical_sources.insert(key);
             canonical_native_lookup.emplace(key, native);
+            canonical_file_id_lookup.emplace(key, file_id);
             canonical_case_lookup.emplace(unicode_native, native);
             seen_physical_file_ids.emplace(file_id, native);
         } catch (const std::exception& error) {
