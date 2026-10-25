@@ -51,6 +51,9 @@ def assert_file_identity_collision_policy() -> None:
                 and region.count(equivalence) == 1
                 and region.count("reject_target(") == 1
                 and region.index(equivalence) < region.index("reject_target(")
+                # The rejection must be reachable directly from the mismatch
+                # branch. Mere presence of the reject_target token is not proof.
+                and region.split(equivalence, 1)[1].lstrip().startswith("reject_target(")
                 and "continue;" in region)
 
     require(guarded(source), "Duplicate reported file ID lacks a fail-closed equivalence gate")
@@ -61,6 +64,23 @@ def assert_file_identity_collision_policy() -> None:
     missing_reject = first + begin + region.replace("reject_target(", "ignore_target(", 1) + end + last
     require(not guarded(missing_reject),
             "Mutation control failed: missing collision rejection went undetected")
+
+    # A previously undetected, compilable C++ mutation placed the rejection
+    # inside an always-false nested branch. The old token-only test went green.
+    direct_reject = equivalence + "\n                    reject_target("
+    require(source.count(direct_reject) == 1,
+            "Collision mismatch path lacks its direct rejection")
+    unreachable_reject = source.replace(
+        direct_reject,
+        equivalence + "\n                    if (false) {\n                        reject_target(",
+        1)
+    rejection_end = '"Matching file ID could not be verified as the same physical file.");'
+    require(unreachable_reject.count(rejection_end) == 1,
+            "Collision rejection endpoint unexpectedly changed")
+    unreachable_reject = unreachable_reject.replace(
+        rejection_end, rejection_end + "\n                    }", 1)
+    require(not guarded(unreachable_reject),
+            "Mutation control failed: unreachable collision rejection went undetected")
 
 
 def main() -> None:
