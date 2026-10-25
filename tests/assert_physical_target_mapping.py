@@ -106,7 +106,7 @@ def assert_path_alias_collision_policy() -> None:
         "                        reject_target(")
     case_outer = (
         "if (collision != canonical_case_lookup.end()) {\n"
-        "                const auto previous_case_id"
+        "                const auto previous_case_id")
     case_reject = (
         "if (previous_case_id == canonical_case_file_id_lookup.end() ||\n"
         "                    !(current_case_id == previous_case_id->second) ||\n"
@@ -150,9 +150,14 @@ def assert_path_alias_collision_policy() -> None:
         ("canonical alias captured identity bypass", canonical_reject,
          canonical_reject.replace("!(current_alias_id == previous_id->second)", "false")),
         ("canonical alias first identity lookup removed",
-         "canonical_file_id_lookup.find(*original)", "canonical_file_id_lookup.end()"),
+         "const auto previously_mapped = canonical_native_lookup.find(*original);\n"
+         "                    const auto previous_id = canonical_file_id_lookup.find(*original);",
+         "const auto previously_mapped = canonical_native_lookup.find(*original);\n"
+         "                    const auto previous_id = canonical_file_id_lookup.end();"),
         ("canonical alias identity probe removed",
-         "read_physical_file_identity(unicode_path_from_utf8(native))", "physical_file_identity{}"),
+         "const physical_file_identity current_alias_id =\n"
+         "                        read_physical_file_identity(unicode_path_from_utf8(native));",
+         "const physical_file_identity current_alias_id = physical_file_identity{};"),
         ("canonical comparator rejection", canonical_reject,
          canonical_reject.replace("reject_target(", "ignore_target(")),
         ("canonical unreachable nested rejection", canonical_reject,
@@ -166,7 +171,9 @@ def assert_path_alias_collision_policy() -> None:
         ("Unicode case original identity lookup removed",
          "canonical_case_file_id_lookup.find(unicode_native)", "canonical_case_file_id_lookup.end()"),
         ("Unicode case identity probe removed",
-         "read_physical_file_identity(unicode_native)", "physical_file_identity{}"),
+         "const physical_file_identity current_case_id =\n"
+         "                    read_physical_file_identity(unicode_native);",
+         "const physical_file_identity current_case_id = physical_file_identity{};"),
         ("Unicode case captured identity storage removed",
          "canonical_case_file_id_lookup.emplace(unicode_native, file_id);",
          "canonical_case_file_id_lookup.clear();"),
