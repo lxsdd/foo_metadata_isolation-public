@@ -170,8 +170,8 @@ def assert_repeated_canonical_path_identity_policy() -> None:
     end = "const std::wstring unicode_native = unicode_path_from_utf8(native);"
     storage = "canonical_file_id_lookup.emplace(key, file_id);"
     direct_reject = (
-        'if (previous_id == canonical_file_id_lookup.end() ||\\n'
-        '                        !(current_duplicate_id == previous_id->second)) {\\n'
+        'if (previous_id == canonical_file_id_lookup.end() ||\n'
+        '                        !(current_duplicate_id == previous_id->second)) {\n'
         '                        reject_target('
     )
     # The exact source is a safety contract: a second identical canonical
