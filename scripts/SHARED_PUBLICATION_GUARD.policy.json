@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "expected_artifact_actions": {
+    "candidate.yml": 1
+  },
+  "required_disabled_steps": {
+    "candidate.yml": [
+      "Upload candidate (held pending separate redistribution permission)"
+    ]
+  },
+  "allowed_workflows": [
+    "candidate.yml",
+    "discogs-central-qa-evidence.yml",
+    "full-length-111-mix-e2e.yml",
+    "isolated-virtual-write.yml",
+    "masstagger-193-real-host-e2e.yml",
+    "masstagger-2026-original-preflight.yml",
+    "migration.yml",
+    "modified-discogger-coload.yml",
+    "owner-mix-copy-preflight.yml",
+    "sdk-2026-full-e2e.yml",
+    "source-history-triage.yml"
+  ]
+}

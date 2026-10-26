@@ -311,14 +311,16 @@ public:
             message << "Write guard status: " << protection_status_name(status) << "\n\n";
             switch (status) {
             case protection_status::active:
-                message << "The filter has received a callback in this foobar2000 session.";
+                message << "An unsafe virtual write was blocked in this foobar2000 session. "
+                           "This is historical evidence, not a live check of Track Info Filters.";
                 break;
             case protection_status::inactive:
                 message << "The Metadata Isolation write-guard setting is disabled.";
                 break;
             case protection_status::unknown:
-                message << "The guard is enabled in Metadata Isolation, but filter activation has "
-                           "not yet been observed. Verify it under Preferences > Track Info Filters.";
+                message << "No unsafe virtual write block has been observed in this session. "
+                           "This does not prove the filter is disabled; verify it under "
+                           "Preferences > Track Info Filters.";
                 break;
             }
             popup_message::g_show(message, "Metadata Isolation");
