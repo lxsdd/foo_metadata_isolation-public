@@ -82,10 +82,10 @@ try {
     $studioCoLoad = -not [string]::IsNullOrWhiteSpace($CompanionStudioDll)
     if ($studioCoLoad) {
         if (-not $discoggerCoLoad) { throw 'Three-component host test requires modified Discogger too' }
-        if ($env:DISCOGGER_MODIFIED_SOURCE_SHA -cne '366cf4f71f72fed1e57f868175f3aa82591ffbec') {
+        if ($env:DISCOGGER_MODIFIED_SOURCE_SHA -cne 'f3ac723aee765a335b0d7c811ff99855702b367f') {
             throw 'Discogger source pin was not independently verified by the workflow'
         }
-        if ($env:MMS_PINNED_SOURCE_SHA -cne '73ff5420f75add5ac15fcbcf3fb4cd6be7a01647') {
+        if ($env:MMS_PINNED_SOURCE_SHA -cne 'fef08a4d730c0093e9cca75cc95e205218bc6b45') {
             throw 'Studio source pin was not independently verified by the workflow'
         }
         $studioDll = (Resolve-Path -LiteralPath $CompanionStudioDll -ErrorAction Stop).Path
