@@ -1,80 +1,60 @@
 #!/usr/bin/env python3
-"""Keep manually qualified metadata-isolation component builds ephemeral."""
+"""Metadata Isolation's source-only publication gate, pinned to shared source.
+
+The canonical scanner is additive to product-specific provenance, license,
+candidate packaging and physical/virtual/CUE-write safety rules.
+"""
+from __future__ import annotations
+import hashlib
+import json
 from pathlib import Path
 import sys
-# One repository-wide semantic publication gate below owns the invariant.
-# Never couple the safety decision to a human-readable step title: renaming
-# a disabled upload cannot make a safe candidate appear unsafe (or vice versa).
 
-# Repository-wide second gate: inspect every Actions workflow, including newly
-# added files, rather than only previously known upload step names.
-def _scan_publication_surface(_files, _expected):
-    import re as _re
-    _issues, _counts = [], {}
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = ROOT / "scripts"
+EXPECTED_PIN = {
+    "source_repo": "lxsdd/dev-infrastructure-public",
+    "source_commit": "4ea764a2e586ebe3c4274634666f77b3370dc246",
+    "source_path": "shared/ci/publication_guard.py",
+    "source_git_blob_sha1": "ff55f22ac0aafc500e8ee5235e253d0bb4ad8d69",
+    "license_and_scope": "Source-only reusable CI scanner; no permission for component binary publication; product-specific physical/virtual/CUE and release gates remain mandatory"
+} 
+# The JSON-formatted literal above is intentionally a Python dict: JSON strings
+# are valid Python literals, and all values are immutable reviewed strings.
 
-    def _indent(_s):
-        return len(_s) - len(_s.lstrip(" "))
+def git_blob_sha1(raw: bytes) -> str:
+    raw = raw.replace(b"\r\n", b"\n")
+    return hashlib.sha1(b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw).hexdigest()
 
-    def _is_disabled(_s, _col):
-        return (_indent(_s) == _col and
-                _re.match(r"^\s*if:\s*false(?:\s*(?:#.*)?)?$", _s) is not None)
+def verify_pin(pin_data: dict, source: bytes) -> list[str]:
+    errors = []
+    if pin_data != EXPECTED_PIN:
+        errors.append("exact shared guard source pin differs from reviewed owner commit/path/blob")
+    if git_blob_sha1(source) != EXPECTED_PIN["source_git_blob_sha1"]:
+        errors.append("canonical shared guard bytes differ from reviewed Git blob")
+    return errors
 
-    def _job_disabled(_lines, _i):
-        _jobs = [_j for _j in range(_i + 1)
-                 if _re.match(r"^  [A-Za-z0-9_-]+:\s*(?:#.*)?$", _lines[_j])]
-        return (bool(_jobs) and any(_is_disabled(_s, 4)
-                for _s in _lines[_jobs[-1]+1:_i+1]))
+def main() -> int:
+    try:
+        pin_data = json.loads((SCRIPTS / "SHARED_PUBLICATION_GUARD.pin.json").read_text(encoding="utf-8"))
+        source = (SCRIPTS / "_shared_publication_guard.py").read_bytes()
+        policy = json.loads((SCRIPTS / "SHARED_PUBLICATION_GUARD.policy.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        print("FAIL_ISOLATION_SHARED_PUBLICATION_FILES: " + str(exc))
+        return 1
+    errors = verify_pin(pin_data, source)
+    if errors:
+        print("FAIL_ISOLATION_SHARED_PUBLICATION_PIN:\n- " + "\n- ".join(errors))
+        return 1
+    from _shared_publication_guard import audit_repository
+    errors = audit_repository(ROOT, policy)
+    if errors:
+        print("FAIL_ISOLATION_PUBLICATION_SURFACE:\n- " + "\n- ".join(errors))
+        return 1
+    print("PASS_ISOLATION_SHARED_PUBLICATION_GUARD_EXACT_OWNER_BLOB")
+    print("PASS_ISOLATION_PUBLICATION_SURFACE_SOURCE_ONLY")
+    print("ISOLATION_BINARY_PUBLICATION_AUTHORIZED=NO")
+    return 0
 
-    for _name, _text in _files.items():
-        _lines = _text.splitlines()
-        for _i, _line in enumerate(_lines):
-            _s = _line.strip()
-            if _s.startswith("#"):
-                continue
-            if _re.match(r"^-?\s*uses:\s*actions/upload-artifact@", _s, _re.I):
-                _counts[_name] = _counts.get(_name, 0) + 1
-                _level = _indent(_line) if _s.startswith("- uses:") else _indent(_line) - 2
-                _starts = [_j for _j in range(_i + 1)
-                           if _indent(_lines[_j]) == _level
-                           and _lines[_j].lstrip().startswith("- ")]
-                if not _starts:
-                    _issues.append(f"{_name}:{_i+1}: unidentified upload step")
-                    continue
-                _start = _starts[-1]
-                _end = next((_k for _k in range(_start + 1, len(_lines))
-                             if _lines[_k].strip()
-                             and not _lines[_k].lstrip().startswith("#")
-                             and _indent(_lines[_k]) <= _level), len(_lines))
-                if (not any(_is_disabled(_v, _level + 2)
-                            for _v in _lines[_start+1:_end])
-                        and not _job_disabled(_lines, _i)):
-                    _issues.append(f"{_name}:{_i+1}: ungated upload")
-            if (_re.search(r"\bgh\s+release\s+create\b", _s)
-                or _re.match(r"^-?\s*uses:\s*(?:softprops/action-gh-release|actions/create-release)@", _s, _re.I)):
-                if not _job_disabled(_lines, _i):
-                    _issues.append(f"{_name}:{_i+1}: ungated release")
-    for _name, _count in _expected.items():
-        if _counts.get(_name, 0) != _count:
-            _issues.append(f"{_name}: expected {_count} uploads, found {_counts.get(_name, 0)}")
-    for _name in _counts:
-        if _name not in _expected:
-            _issues.append(f"{_name}: unreviewed new upload workflow")
-    return _issues
-
-_D_EXPECTED = {"candidate.yml":1}
-_D_DIR = Path(__file__).resolve().parents[1] / ".github/workflows"
-_D_FILES = {p.name: p.read_text(encoding="utf-8") for p in _D_DIR.iterdir()
-            if p.suffix.lower() in (".yml", ".yaml")}
-if not _D_FILES:
-    sys.exit("FAIL: no workflow files to audit")
-_D_ERRORS = _scan_publication_surface(_D_FILES, _D_EXPECTED)
-if _D_ERRORS:
-    sys.exit("FAIL repository-wide binary publication audit:\n- " + "\n- ".join(_D_ERRORS))
-_D_MUTATION = dict(_D_FILES)
-_D_MUTATION["test-unreviewed-upload.yml"] = (
-    "jobs:\n  leak:\n    runs-on: ubuntu-latest\n    steps:\n"
-    "      - uses: actions/upload-artifact@v7\n")
-if not _scan_publication_surface(_D_MUTATION, _D_EXPECTED):
-    sys.exit("FAIL: an unreviewed binary upload bypassed the audit")
-print(f"PASS: {_D_DIR} workflow audit including new-workflow bypass regression")
-print("PASS: SDK/Win32/x64 source qualification remains; candidate upload disabled")
+if __name__ == "__main__":
+    raise SystemExit(main())
