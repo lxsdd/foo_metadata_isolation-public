@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: lxsdd/music-metadata-studio
-          ref: ff3c055dcb5212ed83702c7f86a1872b3868c1d3
+          ref: 3b8cb71965971625842ca0290156149408b971eb
           path: external/studio-draft
           persist-credentials: false
       - name: Exact reviewed SDK template for Metadata Isolation
@@ -76,6 +76,13 @@ jobs:
           ref: 35369054c56f4c6ccb2f802944e9675852fd35ec
           path: .ci_installer
           persist-credentials: false
+      - name: Pinned shared Windows accessibility observer for real three-DLL native preview
+        uses: actions/checkout@v4
+        with:
+          repository: lxsdd/dev-infrastructure-public
+          ref: 3482a2beb4d91c9875bc28b91bd43287bab47bc6
+          path: .ci_shared
+          persist-credentials: false
       - uses: microsoft/setup-msbuild@v2
       - name: Verify external draft identity and no-public-binary gate
         shell: pwsh
@@ -83,14 +90,22 @@ jobs:
           $ErrorActionPreference='Stop'
           $expected='cf2ce792ca53379436a729e0e7e1ac810fcaed38'
           if((& git -C external/discogger-draft rev-parse HEAD).Trim() -cne $expected){throw 'Modified Discogger source SHA mismatch'}
-          $studioExpected='ff3c055dcb5212ed83702c7f86a1872b3868c1d3'
+          $studioExpected='3b8cb71965971625842ca0290156149408b971eb'
           if((& git -C external/studio-draft rev-parse HEAD).Trim() -cne $studioExpected){throw 'Studio source SHA mismatch'}
           & python scripts/verify-public-artifact-hold.py
           if($LASTEXITCODE -ne 0){throw 'Source-only artifact hold failed'}
           & python tests/verify_source_release_provenance.py
           if($LASTEXITCODE -ne 0){throw 'Source provenance failed'}
+          $observerExpected='3482a2beb4d91c9875bc28b91bd43287bab47bc6'
+          if((& git -C .ci_shared rev-parse HEAD).Trim() -cne $observerExpected){throw 'Shared Windows accessibility observer SHA mismatch'}
           & python tests/test_coload_source_pins.py
           if($LASTEXITCODE -ne 0){throw 'Current 3-DLL immutable source/host contract failed'}
+          $tokens=$null
+          $parseErrors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path -LiteralPath 'tests/run_isolated_virtual_write.ps1').Path,
+            [ref]$tokens,[ref]$parseErrors)
+          if(@($parseErrors).Count -ne 0){throw 'Three-component native host test PowerShell syntax invalid'}
           Write-Host 'MODIFIED_DISCOGGER_SOURCE_SHA=PASS_EXACT_PIN'
           Write-Host 'MMS_SOURCE_SHA=PASS_EXACT_PIN'
       - name: Stage all verified Discogger dependencies and build actual DLL
@@ -131,15 +146,16 @@ jobs:
         shell: pwsh
         env:
           DISCOGGER_MODIFIED_SOURCE_SHA: cf2ce792ca53379436a729e0e7e1ac810fcaed38
-          MMS_PINNED_SOURCE_SHA: ff3c055dcb5212ed83702c7f86a1872b3868c1d3
+          MMS_PINNED_SOURCE_SHA: 3b8cb71965971625842ca0290156149408b971eb
         run: |
           $ErrorActionPreference='Stop'
           $arch='${{ matrix.architecture }}'
           $metadata=if($arch -eq 'Win32'){'build/foo_metadata_isolation.dll'}else{'build/x64/foo_metadata_isolation.dll'}
           $discDll=Join-Path $env:RUNNER_TEMP "discogger-sdk-probe/foobar2000/foo_discogger/$arch/Release/foo_discogger.dll"
           $studioDll=Join-Path (Get-Location) "external/studio-draft/out/foobar/$arch/Release/foo_music_metadata_studio.dll"
-          ./tests/run_isolated_virtual_write.ps1 -Architecture $arch -ComponentDll $metadata -CompanionDiscoggerDll $discDll -CompanionDiscoggerConfigDb 'external/discogger-draft/foo_discogger.dll.db' -CompanionStudioDll $studioDll -RunPhysicalMetadata -RunDirectGuard
+          ./tests/run_isolated_virtual_write.ps1 -Architecture $arch -ComponentDll $metadata -CompanionDiscoggerDll $discDll -CompanionDiscoggerConfigDb 'external/discogger-draft/foo_discogger.dll.db' -CompanionStudioDll $studioDll -RunPhysicalMetadata -RunDirectGuard -RunUiContracts -RunRealAuditUia
           if($LASTEXITCODE -ne 0){throw 'Original foobar three-component host qualification failed'}
           Write-Host "MODIFIED_DISCOGGER_PHYSICAL_ISOLATION_COLOAD_$arch=PASS"
           Write-Host "PINNED_STUDIO_DISCOGGER_ISOLATION_PHYSICAL_GUARDS_$arch=PASS"
+          Write-Host "THREE_COMPONENT_NATIVE_PHYSICAL_AUDIT_UIA_$arch=PASS"
       # Absolutely no upload-artifact, caches, OAuth secrets or user files.

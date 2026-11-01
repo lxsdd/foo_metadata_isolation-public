@@ -85,7 +85,7 @@ try {
         if ($env:DISCOGGER_MODIFIED_SOURCE_SHA -cne 'cf2ce792ca53379436a729e0e7e1ac810fcaed38') {
             throw 'Discogger source pin was not independently verified by the workflow'
         }
-        if ($env:MMS_PINNED_SOURCE_SHA -cne 'ff3c055dcb5212ed83702c7f86a1872b3868c1d3') {
+        if ($env:MMS_PINNED_SOURCE_SHA -cne '3b8cb71965971625842ca0290156149408b971eb') {
             throw 'Studio source pin was not independently verified by the workflow'
         }
         $studioDll = (Resolve-Path -LiteralPath $CompanionStudioDll -ErrorAction Stop).Path
@@ -140,6 +140,20 @@ try {
     & python tests/make_isolated_embedded_mp3.py $source
     if ($LASTEXITCODE -ne 0) { throw 'Synthetic embedded-Cue fixture generation failed' }
     Copy-Item -LiteralPath $source -Destination $before
+
+    # Protect the original embedded-CUE carrier against identical-byte rewrites.
+    # SHA-only tests would miss a physical tagger touching the source mtime.
+    # The positive Physical writer later uses a separate disposable MP3.
+    $embeddedCueSource = $source
+    $embeddedCueBaselineHash = (Get-FileHash -LiteralPath $embeddedCueSource -Algorithm SHA256).Hash
+    $embeddedCueBaselineTicks = (Get-Item -LiteralPath $embeddedCueSource).LastWriteTimeUtc.Ticks
+    function Assert-EmbeddedCueNoWrite([string]$phase) {
+        if (-not $studioCoLoad) { return }
+        if ((Get-FileHash -LiteralPath $embeddedCueSource -Algorithm SHA256).Hash -cne $embeddedCueBaselineHash -or
+            (Get-Item -LiteralPath $embeddedCueSource).LastWriteTimeUtc.Ticks -ne $embeddedCueBaselineTicks) {
+            throw "Embedded-CUE source changed during three-component co-load: $phase"
+        }
+    }
 
     $process = Start-Process -FilePath $exe -WorkingDirectory $portable -PassThru
     $ready = $false
@@ -320,6 +334,7 @@ try {
             (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
             throw 'Discogger-owned test write unexpectedly changed the separate embedded-Cue source'
         }
+        Assert-EmbeddedCueNoWrite 'after-discogger-physical-write'
         Write-Host "MODIFIED_DISCOGGER_NATIVE_SDK_PHYSICAL_MP3_WRITE_COLOAD_$Architecture=PASS"
         # The second identical Discogger-owned SDK request must be a true
         # no-op even while Metadata Isolation is loaded in the same host.
@@ -355,6 +370,7 @@ try {
             (Get-Item -LiteralPath $discoggerQaMp3).LastWriteTimeUtc.Ticks -ne $qaNoOpTicks) {
             throw 'Identical Discogger SDK operation rewrote physical MP3 during co-load'
         }
+        Assert-EmbeddedCueNoWrite 'after-discogger-identical-noop'
         Write-Host "MODIFIED_DISCOGGER_NATIVE_SDK_PHYSICAL_MP3_NOOP_COLOAD_$Architecture=PASS"
     }
 
@@ -366,6 +382,7 @@ try {
     & python tests/assert_physical_audit_classifier.py $classifierReport $before $source
     if ($LASTEXITCODE -ne 0) { throw 'Real native physical audit classifier regression oracle failed' }
     Remove-Item -LiteralPath $classifierReport -Force
+    Assert-EmbeddedCueNoWrite 'after-physical-audit-classifier'
     Write-Host "REAL_HOST_PHYSICAL_AUDIT_CLASSIFIER_$Architecture=PASS"
 
     # Exercise the actual optimized C++ map_to_physical_targets() in the
@@ -595,6 +612,7 @@ try {
             Write-Host ("REAL_HOST_CUE_TIMING_" + $Architecture + "=" + $test + ":PASS")
         }
     }
+    Assert-EmbeddedCueNoWrite 'before-physical-write-positive-control'
     if ($RunPhysicalMetadata) {
         # Positive counterexample: physical tag writes must remain possible.
         $caseDir = Join-Path $root 'physical-title'
@@ -643,6 +661,7 @@ try {
         Get-Content -LiteralPath $report | Select-Object -First 60 | ForEach-Object { Write-Host "GUARD_PROBE: $_" }
         & python tests/assert_isolated_write_guard.py $before $source $report
         if ($LASTEXITCODE -ne 0) { throw 'Direct Guard byte preservation failed' }
+        Assert-EmbeddedCueNoWrite 'after-direct-virtual-write-guard'
         Write-Host "REAL_HOST_DIRECT_VIRTUAL_WRITE_GUARD_$Architecture=PASS"
     }
 

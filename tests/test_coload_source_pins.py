@@ -10,15 +10,30 @@ ROOT = Path(__file__).resolve().parents[1]
 FLOW = ROOT / ".github/workflows/modified-discogger-coload.yml"
 SDK_PIN = ROOT / "sdk/SDK-PIN.json"
 DISCOGGER = "cf2ce792ca53379436a729e0e7e1ac810fcaed38"
-STUDIO = "ff3c055dcb5212ed83702c7f86a1872b3868c1d3"
+STUDIO = "3b8cb71965971625842ca0290156149408b971eb"
 SDK = "31a35947a7527826c2199491692802e3ce3d8bd7"
 INSTALLER = "35369054c56f4c6ccb2f802944e9675852fd35ec"
+ACCESSIBILITY = "3482a2beb4d91c9875bc28b91bd43287bab47bc6"
 
 # Fail-closed original-host no-write evidence: a source-pin update must never
 # silently disable the real Discogger callback, MP3/mtime no-op oracle,
 # virtual write guard, or third-component load requirement.
 HOST_SCRIPT = ROOT / "tests/run_isolated_virtual_write.ps1"
 HOST_GATES = (
+    "function Assert-EmbeddedCueNoWrite([string]$phase) {",
+    "if (-not $studioCoLoad) { return }",
+    "$embeddedCueBaselineHash = (Get-FileHash -LiteralPath $embeddedCueSource -Algorithm SHA256).Hash",
+    "$embeddedCueBaselineTicks = (Get-Item -LiteralPath $embeddedCueSource).LastWriteTimeUtc.Ticks",
+    "-cne $embeddedCueBaselineHash -or",
+    "-ne $embeddedCueBaselineTicks) {",
+    "throw \"Embedded-CUE source changed during three-component co-load: $phase\"",
+    "'.ci_shared/scripts/windows-ui-accessibility.ps1'",
+    "& ./tests/assert_real_audit_uia.ps1 -FoobarPid $process.Id",
+    "Assert-EmbeddedCueNoWrite 'after-discogger-physical-write'",
+    "Assert-EmbeddedCueNoWrite 'after-discogger-identical-noop'",
+    "Assert-EmbeddedCueNoWrite 'after-physical-audit-classifier'",
+    "Assert-EmbeddedCueNoWrite 'before-physical-write-positive-control'",
+    "Assert-EmbeddedCueNoWrite 'after-direct-virtual-write-guard'",
     "throw 'Three-component host test requires modified Discogger too'",
     "throw 'Genuine foobar host did not load pinned Studio component'",
     "if (-not $qaNoOpConfirmed)",
@@ -51,18 +66,19 @@ def host_issues(source: str) -> list[str]:
 
 def issues(source: str, sdk_pin: dict) -> list[str]:
     problems = []
-    def refs(repo: str, expected: str, count: int):
+    def refs(repo: str, expected: list[str]):
         found = re.findall(r"(?m)^\s+repository:\s*" + re.escape(repo)
                            + r"\s*\n\s+ref:\s*([0-9a-f]{40})\s*$", source)
-        if found != [expected] * count:
+        if found != expected:
             problems.append("wrong exact checkout refs: " + repo)
-    refs("lxsdd/foo_discogger", DISCOGGER, 1)
-    refs("lxsdd/music-metadata-studio", STUDIO, 1)
-    refs("lxsdd/foobar2000_component_template", SDK, 3)
-    refs("lxsdd/dev-infrastructure-public", INSTALLER, 1)
+    refs("lxsdd/foo_discogger", [DISCOGGER])
+    refs("lxsdd/music-metadata-studio", [STUDIO])
+    refs("lxsdd/foobar2000_component_template", [SDK] * 3)
+    refs("lxsdd/dev-infrastructure-public", [INSTALLER, ACCESSIBILITY])
     for label, exact in (
         ("discogger PowerShell assertion", "$expected='" + DISCOGGER + "'"),
         ("studio PowerShell assertion", "$studioExpected='" + STUDIO + "'"),
+        ("observer PowerShell assertion", "$observerExpected='" + ACCESSIBILITY + "'"),
         ("discogger runtime env", "DISCOGGER_MODIFIED_SOURCE_SHA: " + DISCOGGER),
         ("studio runtime env", "MMS_PINNED_SOURCE_SHA: " + STUDIO),
     ):
@@ -74,9 +90,12 @@ def issues(source: str, sdk_pin: dict) -> list[str]:
         "./scripts/build-component-dll.ps1 -Platforms",
         "./scripts/build-foobar.ps1 -Platform",
         "./tests/run_isolated_virtual_write.ps1 -Architecture",
-        "-RunPhysicalMetadata -RunDirectGuard",
+        "-RunPhysicalMetadata -RunDirectGuard -RunUiContracts -RunRealAuditUia",
         "MMS_ACTUAL_DEFAULT_READONLY_DLL_",
         "PINNED_STUDIO_DISCOGGER_ISOLATION_PHYSICAL_GUARDS_",
+        "THREE_COMPONENT_NATIVE_PHYSICAL_AUDIT_UIA_",
+        "path: .ci_shared",
+        "[System.Management.Automation.Language.Parser]::ParseFile(",
     ):
         if marker not in source:
             problems.append("missing original native host/CUE safety step: " + marker)
@@ -172,6 +191,29 @@ class ThreeComponentCurrentSourceTests(unittest.TestCase):
         self.assertTrue(any("dispatch" in x for x in
                             host_issues(host.replace(HOST_QA_DISPATCH,
                                                      HOST_QA_DISPATCH.replace("MP3 write", "MP3 read"), 1))))
+
+    def test_stale_accessibility_observer_rejected(self):
+        self.mutated("ref: " + ACCESSIBILITY, "ref: " + "0"*40, "checkout")
+
+    def test_missing_original_three_component_audit_ui_rejected(self):
+        self.mutated("-RunRealAuditUia", "-NoAuditUia", "host/CUE")
+        self.mutated("path: .ci_shared", "path: .ci_untrusted", "host/CUE")
+
+    def test_embedded_cue_original_carrier_rewrite_detection(self):
+        host = HOST_SCRIPT.read_text(encoding="utf-8")
+        self.assertEqual(host_issues(host), [])
+        for marker in (
+            "if (-not $studioCoLoad) { return }",
+            "-cne $embeddedCueBaselineHash -or",
+            "-ne $embeddedCueBaselineTicks) {",
+            "Assert-EmbeddedCueNoWrite 'after-discogger-physical-write'",
+            "Assert-EmbeddedCueNoWrite 'after-discogger-identical-noop'",
+            "Assert-EmbeddedCueNoWrite 'after-physical-audit-classifier'",
+            "Assert-EmbeddedCueNoWrite 'before-physical-write-positive-control'",
+            "Assert-EmbeddedCueNoWrite 'after-direct-virtual-write-guard'",
+        ):
+            self.assertIn(marker, host)
+            self.assertIn(marker, host_issues(host.replace(marker, "# disabled guard", 1)))
 
     def test_host_runtime_pin_drift_rejected(self):
         host = HOST_SCRIPT.read_text(encoding="utf-8")
