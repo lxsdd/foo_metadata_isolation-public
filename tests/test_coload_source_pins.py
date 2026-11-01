@@ -9,10 +9,32 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 FLOW = ROOT / ".github/workflows/modified-discogger-coload.yml"
 SDK_PIN = ROOT / "sdk/SDK-PIN.json"
-DISCOGGER = "f3ac723aee765a335b0d7c811ff99855702b367f"
-STUDIO = "fef08a4d730c0093e9cca75cc95e205218bc6b45"
+DISCOGGER = "f83f6cfa4d2c3bf36402f5650319b9f045d34866"
+STUDIO = "1b7b8a8f7f4453f4ef551e5f917c83db87d8b270"
 SDK = "31a35947a7527826c2199491692802e3ce3d8bd7"
 INSTALLER = "35369054c56f4c6ccb2f802944e9675852fd35ec"
+
+# Fail-closed original-host no-write evidence: a source-pin update must never
+# silently disable the real Discogger callback, MP3/mtime no-op oracle,
+# virtual write guard, or third-component load requirement.
+HOST_SCRIPT = ROOT / "tests/run_isolated_virtual_write.ps1"
+HOST_GATES = (
+    "throw 'Three-component host test requires modified Discogger too'",
+    "throw 'Genuine foobar host did not load pinned Studio component'",
+    "if (-not $qaNoOpConfirmed)",
+    "(Get-FileHash -LiteralPath $discoggerQaMp3 -Algorithm SHA256).Hash -ne $qaNoOpHash",
+    "(Get-Item -LiteralPath $discoggerQaMp3).LastWriteTimeUtc.Ticks -ne $qaNoOpTicks",
+    "throw 'Identical Discogger SDK operation rewrote physical MP3 during co-load'",
+    "MODIFIED_DISCOGGER_NATIVE_SDK_PHYSICAL_MP3_NOOP_COLOAD_",
+    "REAL_HOST_DIRECT_VIRTUAL_WRITE_GUARD_",
+)
+
+def host_issues(source: str) -> list[str]:
+    missing = [gate for gate in HOST_GATES if gate not in source]
+    for component, pin in (("Discogger", DISCOGGER), ("Studio", STUDIO)):
+        if source.count(pin) != 1:
+            missing.append(component + " real-host pin drift")
+    return missing
 
 def issues(source: str, sdk_pin: dict) -> list[str]:
     problems = []
@@ -110,6 +132,21 @@ class ThreeComponentCurrentSourceTests(unittest.TestCase):
 
     def test_sdk_pin_drift_rejected(self):
         self.assertTrue(any("SDK" in x for x in issues(self.source, {**self.pin, "source_commit": "0"*40})))
+
+    def test_native_three_component_no_write_evidence_required(self):
+        self.assertEqual(host_issues(HOST_SCRIPT.read_text(encoding="utf-8")), [])
+
+    def test_missing_real_host_guard_or_noop_evidence_rejected(self):
+        host = HOST_SCRIPT.read_text(encoding="utf-8")
+        for marker in HOST_GATES:
+            self.assertIn(marker, host)
+            self.assertIn(marker, host_issues(host.replace(marker, "# removed gate", 1)))
+
+    def test_host_runtime_pin_drift_rejected(self):
+        host = HOST_SCRIPT.read_text(encoding="utf-8")
+        for pin in (DISCOGGER, STUDIO):
+            self.assertIn(pin, host)
+            self.assertTrue(host_issues(host.replace(pin, "0"*40, 1)))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
