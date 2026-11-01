@@ -191,6 +191,20 @@ class ThreeComponentCurrentSourceTests(unittest.TestCase):
                             host_issues(host.replace(HOST_QA_DISPATCH,
                                                      HOST_QA_DISPATCH.replace("MP3 write", "MP3 read"), 1))))
 
+    def test_original_masstagger_requalified_when_three_component_contract_changes(self):
+        flow = (ROOT / ".github/workflows/masstagger-193-real-host-e2e.yml").read_text(encoding="utf-8")
+        self.assertIn("  pull_request:", flow)
+        self.assertIn("  workflow_dispatch:", flow)
+        pr_scope = flow.split("  pull_request:", 1)[1].split("  workflow_dispatch:", 1)[0]
+        for path in (
+            "tests/test_coload_source_pins.py",
+            "tests/run_isolated_virtual_write.ps1",
+            ".github/workflows/modified-discogger-coload.yml",
+        ):
+            marker = "      - '" + path + "'"
+            self.assertEqual(pr_scope.count(marker), 1)
+            self.assertNotIn(marker, pr_scope.replace(marker, "# removed trigger", 1))
+
     def test_stale_accessibility_observer_rejected(self):
         self.mutated("ref: " + ACCESSIBILITY, "ref: " + "0"*40, "checkout")
 

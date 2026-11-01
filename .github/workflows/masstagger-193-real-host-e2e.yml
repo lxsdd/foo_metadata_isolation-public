@@ -6,6 +6,9 @@ on:
     paths:
       - '.github/workflows/masstagger-193-real-host-e2e.yml'
       - 'tests/run_real_masstagger_193_e2e.ps1'
+      - 'tests/test_coload_source_pins.py'
+      - 'tests/run_isolated_virtual_write.ps1'
+      - '.github/workflows/modified-discogger-coload.yml'
       - 'tests/inspect_real_masstagger_manage_scripts.ps1'
       - 'tests/assert_real_original_masstagger_bootstrap.ps1'
       - 'tests/make_plain_masstagger_mp3.py'
