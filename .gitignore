@@ -24,3 +24,14 @@ test-data/generated/
 docs/reports/generated/**/embedded-cue-field-capabilities.json
 *.pyc
 
+
+# foobar2000 SDK is hydrated only from the reviewed 2026-10-01 Git source.
+/sdk/**
+!/sdk/SDK-PIN.json
+!/sdk/README.md
+!/sdk/sdk-license.txt
+!/sdk/pfc/
+!/sdk/pfc/pfc-license.txt
+!/sdk/libPPUI/
+!/sdk/libPPUI/libPPUI-license.txt
+/external/sdk-template/

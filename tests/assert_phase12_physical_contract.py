@@ -19,6 +19,9 @@ PROJECT = (ROOT / "src/foo_metadata_isolation/foo_metadata_isolation.vcxproj").r
 RUNTIME = (ROOT / "tests/run_phase12_physical_runtime.ps1").read_text(
     encoding="utf-8"
 )
+ISOLATED_HOST_RUNTIME = (ROOT / "tests/run_isolated_virtual_write.ps1").read_text(
+    encoding="utf-8"
+)
 FIXTURES = (ROOT / "tests/make_phase12_physical_fixtures.py").read_text(
     encoding="utf-8"
 )
@@ -28,15 +31,54 @@ ORACLE = (ROOT / "tests/assert_phase12_physical_oracle.py").read_text(
 
 
 # Physical routing canonicalizes local sources, rejects non-local sources,
-# deduplicates by source path, and always creates one physical subsong-0 handle.
+# deduplicates by canonical source with the original filesystem-aware comparison,
+# and always creates one physical subsong-0 handle. The prior per-item scan of
+# all already-created handles was quadratic for mostly distinct selections.
 for marker in (
     "filesystem::g_get_canonical_path",
     "source_filesystem->is_remote",
     "filesystem::g_get_native_path",
-    "same_source_path(existing->get_path(), canonical_path)",
+    "std::set<std::string, physical_source_less>",
+    "filesystem::g_compare_paths(left.c_str(), right.c_str(), comparison)",
+    "metadb::path_compare(left.c_str(), right.c_str()) < 0",
+    "unique_physical_sources.find(key)",
     "handle_create(canonical_path, 0)",
+    "unique_physical_sources.insert(key)",
+    "std::filesystem::equivalent(",
+    "canonical_case_lookup.emplace(unicode_native, native)",
+    "MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS",
+    "CompareStringOrdinal(",
+    "canonical_native_lookup.find(*original)",
+    "same_physical_file(native, previously_mapped->second)",
+    "GetFileInformationByHandle(handle, &info)",
+    "FILE_READ_ATTRIBUTES",
+    "seen_physical_file_ids.find(file_id)",
+    "seen_physical_file_ids.emplace(file_id, native)",
+    "Case-only source alias could not be verified",
 ):
     assert marker in MAPPER
+assert "for (const auto& existing : result.handles)" not in MAPPER
+# The canonicalized filesystem-aware comparator must collapse distinct-case
+# names for one local Windows file in the original host, not only in a mock.
+assert "/metadata-isolation-probe-map-physical-case-alias" in DIAGNOSTICS
+assert "map_physical_with_case_alias" in DIAGNOSTICS
+assert "scenario='case-alias'" in ISOLATED_HOST_RUNTIME
+assert "scenario unicode-case-alias" in ISOLATED_HOST_RUNTIME
+assert "/metadata-isolation-probe-map-physical-unicode-case-alias" in DIAGNOSTICS
+assert "map_physical_with_unicode_case_alias" in DIAGNOSTICS
+assert "scenario hardlink-alias" in ISOLATED_HOST_RUNTIME
+assert "map_physical_with_hardlink_alias" in DIAGNOSTICS
+assert "/metadata-isolation-probe-map-physical-hardlink-alias" in DIAGNOSTICS
+assert "New-Item -ItemType HardLink" in ISOLATED_HOST_RUNTIME
+assert '/metadata-isolation-probe-map-physical-remote-first' in DIAGNOSTICS
+# The remote-first scenario is launched from the original isolated Win32/x64
+# host script, not the separate Phase-12 six-source format matrix.
+assert "remote-first-rejected" in ISOLATED_HOST_RUNTIME
+assert "/metadata-isolation-probe-map-physical-remote-first" in ISOLATED_HOST_RUNTIME
+assert "assert_physical_target_mapping.py" in ISOLATED_HOST_RUNTIME
+assert MAPPER.index("handle_create(canonical_path, 0)") < MAPPER.index(
+    "unique_physical_sources.insert(key)"
+)
 
 # A partially unmappable selection never reaches the delegated command.
 assert "!mapping.complete() || mapping.empty()" in CONTEXT

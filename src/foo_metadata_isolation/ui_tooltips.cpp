@@ -243,24 +243,31 @@ tooltip_runtime_probe_result run_tooltip_runtime_probe(bool dark_mode) noexcept 
             std::wcscmp(first_buffer, second_buffer) != 0;
         result.unicode_roundtrip = first_read && std::wcscmp(first_buffer, first_text) == 0;
 
-        SendMessageW(tooltips.window(), TTM_SETDELAYTIME, TTDT_INITIAL, 10);
-        SendMessageW(tooltips.window(), TTM_SETDELAYTIME, TTDT_AUTOPOP, 100);
+        // Realistic hover timing: prior 10/100 ms artificial diagnostic
+        // windows may auto-dismiss before a hosted desktop paints the tip.
+        SendMessageW(tooltips.window(), TTM_SETDELAYTIME, TTDT_INITIAL, 200);
+        SendMessageW(tooltips.window(), TTM_SETDELAYTIME, TTDT_AUTOPOP, 5000);
         ShowWindow(parent, SW_SHOW);
         UpdateWindow(parent);
         SetForegroundWindow(parent);
         SetActiveWindow(parent);
         SetFocus(first);
+        result.parent_visible = IsWindowVisible(parent) != FALSE;
+        result.parent_foreground = GetForegroundWindow() == parent;
         RECT first_bounds = {};
         GetWindowRect(first, &first_bounds);
         SetCursorPos(
             first_bounds.left + (first_bounds.right - first_bounds.left) / 2,
             first_bounds.top + (first_bounds.bottom - first_bounds.top) / 2);
+        POINT cursor = {};
+        result.cursor_inside = GetCursorPos(&cursor) != FALSE &&
+            PtInRect(&first_bounds, cursor) != FALSE;
         INPUT input = {};
         input.type = INPUT_MOUSE;
         input.mi.dx = 1;
         input.mi.dy = 0;
         input.mi.dwFlags = MOUSEEVENTF_MOVE;
-        SendInput(1, &input, sizeof(input));
+        result.mouse_event_sent = SendInput(1, &input, sizeof(input)) == 1;
         MSG relay = {};
         relay.hwnd = first;
         relay.message = WM_MOUSEMOVE;
@@ -270,7 +277,7 @@ tooltip_runtime_probe_result run_tooltip_runtime_probe(bool dark_mode) noexcept 
         ClientToScreen(first, &relay.pt);
         PostMessageW(first, WM_MOUSEMOVE, 0, MAKELPARAM(5, 5));
         SendMessageW(tooltips.window(), TTM_RELAYEVENT, 0, reinterpret_cast<LPARAM>(&relay));
-        const ULONGLONG appear_deadline = GetTickCount64() + 1000;
+        const ULONGLONG appear_deadline = GetTickCount64() + 1800;
         while (IsWindowVisible(tooltips.window()) == FALSE &&
             GetTickCount64() < appear_deadline) {
             MSG message = {};
@@ -280,7 +287,19 @@ tooltip_runtime_probe_result run_tooltip_runtime_probe(bool dark_mode) noexcept 
             }
             Sleep(10);
         }
+        TOOLINFOW active = {};
+        active.cbSize = sizeof(active);
+        result.current_tool_present = SendMessageW(
+            tooltips.window(), TTM_GETCURRENTTOOLW, 0,
+            reinterpret_cast<LPARAM>(&active)) != FALSE;
         result.hover_appeared = IsWindowVisible(tooltips.window()) != FALSE;
+        if (!result.hover_appeared) {
+            // Diagnostic only: an explicitly requested popup is NOT evidence
+            // that a user mouse-over tooltip appeared. Keep hover=false.
+            SendMessageW(tooltips.window(), TTM_POPUP, 0, 0);
+            result.forced_popup_visible = IsWindowVisible(tooltips.window()) != FALSE;
+            SendMessageW(tooltips.window(), TTM_POP, 0, 0);
+        }
         SetCursorPos(first_bounds.right + 40, first_bounds.bottom + 40);
         SendMessageW(first, WM_MOUSELEAVE, 0, 0);
         const ULONGLONG dismiss_deadline = GetTickCount64() + 1000;

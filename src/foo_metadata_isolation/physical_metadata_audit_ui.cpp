@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <set>
 #include <sstream>
@@ -85,6 +87,50 @@ cfg_string g_cfg_audit_columns(guids::cfg_audit_columns, "");
 cfg_string g_cfg_audit_column_state(guids::cfg_audit_column_state, "");
 
 HWND g_audit_window = nullptr;
+
+// The default is a sentinel *pair*, not a ban on negative virtual-screen
+// coordinates. This helper is constexpr so both release and probe builds
+// enforce the same monitor-placement semantics.
+constexpr bool audit_has_saved_position(std::int64_t x, std::int64_t y) noexcept {
+    return x != -1 || y != -1;
+}
+static_assert(!audit_has_saved_position(-1, -1));
+static_assert(audit_has_saved_position(-1920, 250));
+static_assert(audit_has_saved_position(100, -1080));
+
+// Persisted cfg_int is 64-bit; UI filter and sort indices are native int.
+// Validate range before narrowing. Invalid filter values retain the existing
+// Problems default, while out-of-range sort columns clamp to visible bounds.
+constexpr int audit_valid_filter(std::int64_t stored) noexcept {
+    return (stored >= k_filter_problems && stored <= k_filter_ok)
+        ? static_cast<int>(stored) : k_filter_problems;
+}
+constexpr int audit_valid_sort_column(std::int64_t stored) noexcept {
+    return static_cast<int>(std::clamp<std::int64_t>(
+        stored, column_status, column_count - 1));
+}
+static_assert(audit_valid_filter(-100) == k_filter_problems);
+static_assert(audit_valid_filter(999) == k_filter_problems);
+static_assert(audit_valid_filter(k_filter_ok) == k_filter_ok);
+static_assert(audit_valid_sort_column(-100) == column_status);
+static_assert(audit_valid_sort_column(999) == column_count - 1);
+
+#if defined(FB2K_ENABLE_TEST_PROBES)
+// Only synthetic CI snapshots. Never record paths, metadata or user values.
+std::atomic_size_t g_audit_probe_model_rows{0};
+std::atomic_size_t g_audit_probe_filtered_rows{0};
+std::atomic_int g_audit_probe_native_rows{-1};
+std::atomic_int g_audit_probe_filter{-1};
+std::atomic_bool g_audit_probe_list_visible{false};
+std::atomic_int g_audit_probe_insert_result{-999};
+std::atomic_int g_audit_probe_insert_error{-1};
+std::atomic_int g_audit_probe_list_style{-1};
+std::atomic_int g_audit_probe_list_unicode{-1};
+std::atomic_int g_audit_probe_resolved_valid{-1};
+std::atomic_int g_audit_probe_cached_valid{-1};
+std::atomic_int g_audit_probe_handles_equal{-1};
+std::atomic_int g_audit_probe_actual_rows{-1};
+#endif
 
 enum class audit_scope {
     library,
@@ -258,6 +304,7 @@ public:
         m_window = window;
         m_list = GetDlgItem(window, IDC_AUDIT_RESULTS);
         m_progress = GetDlgItem(window, IDC_AUDIT_PROGRESS);
+        m_accessible_detail = GetDlgItem(window, IDC_AUDIT_ACCESSIBLE_DETAIL);
         m_dpi = ui::detect_window_dpi(window);
         if (m_dpi == 0) m_dpi = 96;
 
@@ -309,6 +356,7 @@ public:
         EnableWindow(GetDlgItem(window, IDC_AUDIT_CANCEL), FALSE);
         EnableWindow(GetDlgItem(window, IDC_AUDIT_EDIT_PHYSICAL), FALSE);
         ShowWindow(m_progress, SW_HIDE);
+        SetWindowTextW(m_accessible_detail, L"No result selected.");
         set_text(
             window,
             IDC_AUDIT_STATUS,
@@ -655,7 +703,7 @@ public:
     }
 
     void on_column_click(int column) {
-        int direction = g_cfg_audit_sort_dir;
+        int direction = g_cfg_audit_sort_dir < 0 ? -1 : 1;
         if (g_cfg_audit_sort_col == column) direction = -direction;
         else direction = 1;
         g_cfg_audit_sort_col = column;
@@ -671,10 +719,53 @@ public:
         refresh_list(true);
     }
 
+    void update_accessible_result_detail() {
+        // Native ListView rows are exposed via MSAA, but the hosted Windows
+        // UIA provider may expose zero ListItem/DataItem children. Mirror the
+        // selected row's essential metadata to an ordinary read-only Windows
+        // EDIT control. It exposes native text and MSAA value semantics, so
+        // keyboard users can Tab to and copy the selected result even where
+        // the host UIA provider does not expose ListView children or an EDIT
+        // ValuePattern. Do not claim full UIA/screen-reader qualification.
+        if (m_accessible_detail == nullptr || !IsWindow(m_accessible_detail)) return;
+        pfc::string_formatter detail;
+        const int count = ListView_GetSelectedCount(m_list);
+        if (count == 0) {
+            detail << "No result selected.";
+        } else if (count != 1) {
+            detail << count << " results selected. Select one to read its details.";
+        } else {
+            const int selected = ListView_GetNextItem(m_list, -1, LVNI_SELECTED);
+            LVITEMW item = {};
+            item.mask = LVIF_PARAM;
+            item.iItem = selected;
+            if (selected < 0 || !ListView_GetItem(m_list, &item) ||
+                static_cast<size_t>(item.lParam) >= m_rows.size()) {
+                detail << "Selected result is unavailable.";
+            } else {
+                const auto& row = m_rows[static_cast<size_t>(item.lParam)];
+                detail << "Selected result: " << physical_audit_status_name(row.status)
+                       << ". File: " << row.file_name.c_str();
+                if (!row.missing_fields.empty())
+                    detail << ". Missing core fields: " << row.missing_fields.c_str();
+                const std::string comparison = cue_comparison_text(row);
+                if (!comparison.empty())
+                    detail << ". Cue comparison: " << comparison.c_str();
+            }
+        }
+        pfc::stringcvt::string_wide_from_utf8 wide(detail.c_str());
+        SetWindowTextW(m_accessible_detail, static_cast<const wchar_t*>(wide));
+        // This notifies MSAA listeners of a genuine Windows EDIT value change.
+        // UIA/screenreader support is asserted independently in host tests.
+        NotifyWinEvent(EVENT_OBJECT_VALUECHANGE, m_accessible_detail,
+                       OBJID_CLIENT, CHILDID_SELF);
+    }
+
     void update_edit_enabled() {
         EnableWindow(
             GetDlgItem(m_window, IDC_AUDIT_EDIT_PHYSICAL),
             !m_scan && ListView_GetSelectedCount(m_list) != 0);
+        update_accessible_result_detail();
     }
 
     void show_column_menu(POINT point) {
@@ -843,12 +934,18 @@ public:
                 m_window, IDC_AUDIT_FILTER, CB_ADDSTRING, 0,
                 reinterpret_cast<LPARAM>(filter));
         }
-        int selected = g_cfg_audit_filter;
-        if (selected < k_filter_problems || selected > k_filter_ok) selected = k_filter_problems;
+        const int selected = audit_valid_filter(g_cfg_audit_filter);
         SendDlgItemMessageW(m_window, IDC_AUDIT_FILTER, CB_SETCURSEL, selected, 0);
     }
 
     void refresh_list(bool preserve_selection) {
+        // foobar's native theme/layout initialization may recreate the
+        // ListView after WM_INITDIALOG. Never keep writing into a stale HWND.
+        const HWND current_list = GetDlgItem(m_window, IDC_AUDIT_RESULTS);
+        if (current_list == nullptr || !IsWindow(current_list)) {
+            throw pfc::exception("Audit result ListView is unavailable");
+        }
+        m_list = current_list;
         std::set<std::string> selected_paths;
         if (preserve_selection) {
             int item = -1;
@@ -865,12 +962,12 @@ public:
 
         std::vector<size_t> visible;
         visible.reserve(m_rows.size());
-        const int filter = g_cfg_audit_filter;
+        const int filter = audit_valid_filter(g_cfg_audit_filter);
         for (size_t index = 0; index < m_rows.size(); ++index) {
             if (filter_matches(m_rows[index], filter)) visible.push_back(index);
         }
 
-        const int sort_column = std::clamp<int>(g_cfg_audit_sort_col, 0, column_count - 1);
+        const int sort_column = audit_valid_sort_column(g_cfg_audit_sort_col);
         const int sort_direction = g_cfg_audit_sort_dir < 0 ? -1 : 1;
         std::stable_sort(
             visible.begin(),
@@ -879,6 +976,16 @@ public:
                 const int result = compare_rows(m_rows[left], m_rows[right], sort_column);
                 return sort_direction > 0 ? result < 0 : result > 0;
             });
+
+        // ListView sends synchronous LVN_ITEMCHANGED while rows are replaced.
+        // Updating selection-dependent buttons from inside that notification
+        // re-enters the same control. Defer the single update until the batch
+        // finishes, including during exceptions.
+        struct refresh_scope {
+            bool& active;
+            explicit refresh_scope(bool& target) : active(target) { active = true; }
+            ~refresh_scope() { active = false; }
+        } rebuilding(m_refreshing_list);
 
         SendMessageW(m_list, WM_SETREDRAW, FALSE, 0);
         ListView_DeleteAllItems(m_list);
@@ -892,7 +999,20 @@ public:
             item.iSubItem = 0;
             item.pszText = const_cast<wchar_t*>(static_cast<const wchar_t*>(status));
             item.lParam = static_cast<LPARAM>(row_index);
+            SetLastError(ERROR_SUCCESS);
             const int inserted = ListView_InsertItem(m_list, &item);
+#if defined(FB2K_ENABLE_TEST_PROBES)
+            g_audit_probe_insert_result.store(inserted);
+            g_audit_probe_insert_error.store(static_cast<int>(GetLastError()));
+            g_audit_probe_list_style.store(static_cast<int>(GetWindowLongPtrW(m_list, GWL_STYLE)));
+            g_audit_probe_list_unicode.store(ListView_GetUnicodeFormat(m_list));
+            const HWND resolved = GetDlgItem(m_window, IDC_AUDIT_RESULTS);
+            g_audit_probe_cached_valid.store(IsWindow(m_list) != FALSE);
+            g_audit_probe_resolved_valid.store(IsWindow(resolved) != FALSE);
+            g_audit_probe_handles_equal.store(resolved == m_list);
+            g_audit_probe_actual_rows.store(
+                IsWindow(resolved) ? ListView_GetItemCount(resolved) : -1);
+#endif
             if (inserted < 0) continue;
 
             const std::string values[] = {
@@ -927,12 +1047,19 @@ public:
         InvalidateRect(m_list, nullptr, TRUE);
         update_sort_indicator();
         update_edit_enabled();
+#if defined(FB2K_ENABLE_TEST_PROBES)
+        g_audit_probe_model_rows.store(m_rows.size());
+        g_audit_probe_filtered_rows.store(visible.size());
+        g_audit_probe_native_rows.store(ListView_GetItemCount(m_list));
+        g_audit_probe_filter.store(filter);
+        g_audit_probe_list_visible.store(IsWindowVisible(m_list) != FALSE);
+#endif
     }
 
     void update_sort_indicator() {
         const HWND header = ListView_GetHeader(m_list);
         if (header == nullptr) return;
-        const int sort_column = std::clamp<int>(g_cfg_audit_sort_col, 0, column_count - 1);
+        const int sort_column = audit_valid_sort_column(g_cfg_audit_sort_col);
         const bool ascending = g_cfg_audit_sort_dir >= 0;
         for (int index = 0; index < column_count; ++index) {
             HDITEMW item = {};
@@ -956,6 +1083,8 @@ public:
         const int filter_label_width = ui::scale_for_window_dpi(m_window, 36);
         const int filter_width = ui::scale_for_window_dpi(m_window, 160);
         const int bottom_height = ui::scale_for_window_dpi(m_window, 30);
+        const int detail_height = ui::scale_for_window_dpi(m_window, 24);
+        const int detail_label_width = ui::scale_for_window_dpi(m_window, 104);
         const int button_height = ui::scale_for_window_dpi(m_window, 26);
 
         const int right = client.right - margin;
@@ -984,13 +1113,23 @@ public:
             TRUE);
 
         const int list_top = progress_top + progress_height + gap;
-        const int list_bottom = client.bottom - margin - bottom_height - gap;
+        const int list_bottom = client.bottom - margin - bottom_height - gap - detail_height - gap;
         MoveWindow(
             m_list,
             margin, list_top,
             std::max<int>(40, client.right - 2 * margin),
             std::max<int>(40, list_bottom - list_top),
             TRUE);
+        const int detail_top = list_bottom + gap;
+        MoveWindow(
+            GetDlgItem(m_window, IDC_AUDIT_RESULT_DETAIL_LABEL),
+            margin, detail_top + ui::scale_for_window_dpi(m_window, 3),
+            detail_label_width, detail_height, TRUE);
+        MoveWindow(
+            m_accessible_detail,
+            margin + detail_label_width + gap, detail_top,
+            std::max<int>(40, client.right - 2 * margin - detail_label_width - gap),
+            detail_height, TRUE);
 
         int x = margin;
         struct button_layout { int id; int width; };
@@ -1014,11 +1153,28 @@ public:
     }
 
     void restore_geometry() {
-        const int saved_x = g_cfg_audit_win_x;
-        const int saved_y = g_cfg_audit_win_y;
-        if (saved_x < 0 || saved_y < 0) return;
-        int width = MulDiv(std::max<int>(g_cfg_audit_win_w, 760), static_cast<int>(m_dpi), 96);
-        int height = MulDiv(std::max<int>(g_cfg_audit_win_h, 440), static_cast<int>(m_dpi), 96);
+        // (-1,-1) is the *pair* used by the untouched preference defaults.
+        // Negative coordinates individually are valid for secondary monitors
+        // placed left of or above the primary display.
+        const std::int64_t raw_x = g_cfg_audit_win_x;
+        const std::int64_t raw_y = g_cfg_audit_win_y;
+        if (!audit_has_saved_position(raw_x, raw_y)) return;
+
+        // cfg_int persists 64-bit values; Win32 RECT/MulDiv consume 32-bit
+        // coordinates. Bound corrupted preferences before narrowing/scaling.
+        const auto bounded_position = [](std::int64_t position) {
+            return static_cast<int>(std::clamp<std::int64_t>(
+                position, std::numeric_limits<int>::min() / 2,
+                std::numeric_limits<int>::max() / 2));
+        };
+        const int saved_x = bounded_position(raw_x);
+        const int saved_y = bounded_position(raw_y);
+        const int saved_width = static_cast<int>(std::clamp<std::int64_t>(
+            g_cfg_audit_win_w, 760, 32768));
+        const int saved_height = static_cast<int>(std::clamp<std::int64_t>(
+            g_cfg_audit_win_h, 440, 32768));
+        int width = MulDiv(saved_width, static_cast<int>(m_dpi), 96);
+        int height = MulDiv(saved_height, static_cast<int>(m_dpi), 96);
         RECT desired = {saved_x, saved_y, saved_x + width, saved_y + height};
         HMONITOR monitor = MonitorFromRect(&desired, MONITOR_DEFAULTTONEAREST);
         MONITORINFO info = {sizeof(info)};
@@ -1089,7 +1245,7 @@ public:
                 edit_selected_physical();
                 return 0;
             case LVN_ITEMCHANGED:
-                update_edit_enabled();
+                if (!m_refreshing_list) update_edit_enabled();
                 return 0;
             case LVN_GETINFOTIPW: {
                 auto* tip = reinterpret_cast<NMLVGETINFOTIPW*>(header);
@@ -1153,6 +1309,12 @@ public:
             switch (LOWORD(w_param)) {
             case IDC_AUDIT_FILTER:
                 if (HIWORD(w_param) == CBN_SELCHANGE) self->on_filter_changed();
+                return TRUE;
+            case IDC_AUDIT_ACCESSIBLE_DETAIL:
+                // The hosted ListView may not send every selection-change
+                // notification reliably. Refresh the live selected row when
+                // keyboard/screenreader focus enters the read-only detail.
+                if (HIWORD(w_param) == EN_SETFOCUS) self->update_accessible_result_detail();
                 return TRUE;
             case IDC_AUDIT_RESCAN:
                 self->on_start_scan();
@@ -1281,6 +1443,7 @@ private:
     HWND m_window = nullptr;
     HWND m_list = nullptr;
     HWND m_progress = nullptr;
+    HWND m_accessible_detail = nullptr;
     UINT m_dpi = 96;
     fb2k::CCoreDarkModeHooks m_dark;
     dialog_tooltips m_tooltips;
@@ -1291,6 +1454,7 @@ private:
     bool m_close_when_done = false;
     bool m_pending_scan = false;
     bool m_modeless_registered = false;
+    bool m_refreshing_list = false;
     audit_scope m_pending_scope = audit_scope::library;
     metadb_handle_list m_pending_seed;
 };
@@ -1329,6 +1493,25 @@ mainmenu_group_popup_factory g_audit_mainmenu_group(
 mainmenu_commands_factory_t<audit_mainmenu_commands> g_audit_mainmenu_commands;
 
 } // namespace
+
+#if defined(FB2K_ENABLE_TEST_PROBES)
+void read_audit_internal_state_for_test(pfc::string_base& output) {
+    output << "audit_model_rows=" << g_audit_probe_model_rows.load() << "\n"
+           << "audit_filtered_rows=" << g_audit_probe_filtered_rows.load() << "\n"
+           << "audit_native_rows=" << g_audit_probe_native_rows.load() << "\n"
+           << "audit_insert_result=" << g_audit_probe_insert_result.load() << "\n"
+           << "audit_insert_error=" << g_audit_probe_insert_error.load() << "\n"
+           << "audit_list_style=" << g_audit_probe_list_style.load() << "\n"
+           << "audit_list_unicode=" << g_audit_probe_list_unicode.load() << "\n"
+           << "audit_cached_valid=" << g_audit_probe_cached_valid.load() << "\n"
+           << "audit_resolved_valid=" << g_audit_probe_resolved_valid.load() << "\n"
+           << "audit_handles_equal=" << g_audit_probe_handles_equal.load() << "\n"
+           << "audit_actual_rows=" << g_audit_probe_actual_rows.load() << "\n"
+           << "audit_filter_index=" << g_audit_probe_filter.load() << "\n"
+           << "audit_list_visible="
+           << (g_audit_probe_list_visible.load() ? "true" : "false") << "\n";
+}
+#endif
 
 void show_physical_metadata_audit_library() {
     metadb_handle_list empty;
