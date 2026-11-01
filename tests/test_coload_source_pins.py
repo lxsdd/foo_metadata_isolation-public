@@ -27,12 +27,25 @@ HOST_GATES = (
     "throw 'Identical Discogger SDK operation rewrote physical MP3 during co-load'",
     "MODIFIED_DISCOGGER_NATIVE_SDK_PHYSICAL_MP3_NOOP_COLOAD_",
     "REAL_HOST_DIRECT_VIRTUAL_WRITE_GUARD_",
+    "throw 'Discogger-owned test write unexpectedly changed the separate embedded-Cue source'",
+    "if ($qaCount -ceq '2') {",
+    "throw 'No genuine Discogger SDK identical no-op completion callback'",
 )
 
+# The first original-host SDK command must write, and the second must invoke
+# the identical command. Comment-only markers are not executable evidence.
+HOST_QA_DISPATCH = "Start-Process -FilePath $exe -WorkingDirectory $portable -ArgumentList '/command:\"Discogger QA MP3 write\"'"
+
 def host_issues(source: str) -> list[str]:
-    missing = [gate for gate in HOST_GATES if gate not in source]
+    # PowerShell comment-only "guards" must not qualify a host run.
+    executable = re.sub(r"(?s)<#.*?#>", "", source)
+    executable = "\n".join(line for line in executable.splitlines()
+                           if not line.lstrip().startswith("#"))
+    missing = [gate for gate in HOST_GATES if gate not in executable]
+    if executable.count(HOST_QA_DISPATCH) != 2:
+        missing.append("Discogger physical write and identical no-op dispatch")
     for component, pin in (("Discogger", DISCOGGER), ("Studio", STUDIO)):
-        if source.count(pin) != 1:
+        if executable.count(pin) != 1:
             missing.append(component + " real-host pin drift")
     return missing
 
@@ -141,6 +154,24 @@ class ThreeComponentCurrentSourceTests(unittest.TestCase):
         for marker in HOST_GATES:
             self.assertIn(marker, host)
             self.assertIn(marker, host_issues(host.replace(marker, "# removed gate", 1)))
+
+    def test_commented_original_host_guards_rejected(self):
+        host = HOST_SCRIPT.read_text(encoding="utf-8")
+        for marker in HOST_GATES:
+            active = next(line for line in host.splitlines()
+                          if marker in line and not line.lstrip().startswith("#"))
+            self.assertIn(marker, host_issues(host.replace(active, "# " + active, 1)))
+            self.assertIn(marker, host_issues(host.replace(active, "<# " + active + " #>", 1)))
+
+    def test_discogger_real_write_and_identical_noop_both_required(self):
+        host = HOST_SCRIPT.read_text(encoding="utf-8")
+        self.assertEqual(host.count(HOST_QA_DISPATCH), 2)
+        active = next(line for line in host.splitlines() if HOST_QA_DISPATCH in line)
+        self.assertTrue(any("dispatch" in x for x in
+                            host_issues(host.replace(active, "# " + active, 1))))
+        self.assertTrue(any("dispatch" in x for x in
+                            host_issues(host.replace(HOST_QA_DISPATCH,
+                                                     HOST_QA_DISPATCH.replace("MP3 write", "MP3 read"), 1))))
 
     def test_host_runtime_pin_drift_rejected(self):
         host = HOST_SCRIPT.read_text(encoding="utf-8")
