@@ -9,8 +9,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 FLOW = ROOT / ".github/workflows/modified-discogger-coload.yml"
 SDK_PIN = ROOT / "sdk/SDK-PIN.json"
-DISCOGGER = "f83f6cfa4d2c3bf36402f5650319b9f045d34866"
-STUDIO = "1b7b8a8f7f4453f4ef551e5f917c83db87d8b270"
+DISCOGGER = "cf2ce792ca53379436a729e0e7e1ac810fcaed38"
+STUDIO = "ff3c055dcb5212ed83702c7f86a1872b3868c1d3"
 SDK = "31a35947a7527826c2199491692802e3ce3d8bd7"
 INSTALLER = "35369054c56f4c6ccb2f802944e9675852fd35ec"
 
