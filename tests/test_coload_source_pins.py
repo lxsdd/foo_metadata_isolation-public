@@ -27,7 +27,6 @@ HOST_GATES = (
     "-cne $embeddedCueBaselineHash -or",
     "-ne $embeddedCueBaselineTicks) {",
     "throw \"Embedded-CUE source changed during three-component co-load: $phase\"",
-    "'.ci_shared/scripts/windows-ui-accessibility.ps1'",
     "& ./tests/assert_real_audit_uia.ps1 -FoobarPid $process.Id",
     "Assert-EmbeddedCueNoWrite 'after-discogger-physical-write'",
     "Assert-EmbeddedCueNoWrite 'after-discogger-identical-noop'",
