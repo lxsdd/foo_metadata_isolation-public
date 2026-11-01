@@ -212,12 +212,15 @@ physical_audit_assessment assess_physical_metadata(
         result.review_reason = "CUESHEET syntax / global scope";
     }
 
-    if (missing_groups == 4) {
+    // An ambiguous physical/Cue value requires explicit review even if other
+    // physical core fields are missing. Otherwise INCOMPLETE (or EMPTY) masks
+    // the ambiguity and a Problems-only audit can mislead the operator.
+    if (!result.review_reason.empty()) {
+        result.status = physical_audit_status::review;
+    } else if (missing_groups == 4) {
         result.status = physical_audit_status::empty;
     } else if (missing_groups != 0) {
         result.status = physical_audit_status::incomplete;
-    } else if (!result.review_reason.empty()) {
-        result.status = physical_audit_status::review;
     } else if (!result.cue_differences.empty()) {
         result.status = physical_audit_status::mismatch;
     } else {
