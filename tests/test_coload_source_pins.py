@@ -31,8 +31,7 @@ HOST_GATES = (
     "Assert-EmbeddedCueNoWrite 'after-discogger-physical-write'",
     "Assert-EmbeddedCueNoWrite 'after-discogger-identical-noop'",
     "Assert-EmbeddedCueNoWrite 'after-physical-audit-classifier'",
-    "Assert-EmbeddedCueNoWrite 'before-physical-write-positive-control'",
-    "Assert-EmbeddedCueNoWrite 'after-direct-virtual-write-guard'",
+    "Assert-EmbeddedCueNoWrite 'before-intentional-virtual-commit'",
     "throw 'Three-component host test requires modified Discogger too'",
     "throw 'Genuine foobar host did not load pinned Studio component'",
     "if (-not $qaNoOpConfirmed)",
@@ -222,8 +221,7 @@ class ThreeComponentCurrentSourceTests(unittest.TestCase):
             "Assert-EmbeddedCueNoWrite 'after-discogger-physical-write'",
             "Assert-EmbeddedCueNoWrite 'after-discogger-identical-noop'",
             "Assert-EmbeddedCueNoWrite 'after-physical-audit-classifier'",
-            "Assert-EmbeddedCueNoWrite 'before-physical-write-positive-control'",
-            "Assert-EmbeddedCueNoWrite 'after-direct-virtual-write-guard'",
+            "Assert-EmbeddedCueNoWrite 'before-intentional-virtual-commit'",
         ):
             self.assertIn(marker, host)
             self.assertIn(marker, host_issues(host.replace(marker, "# disabled guard", 1)))

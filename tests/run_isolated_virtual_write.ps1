@@ -461,6 +461,9 @@ try {
     $before = $originalBefore
     Write-Host "REAL_HOST_PHYSICAL_111_DISTINCT_TARGETS_$Architecture=PASS"
 
+    # All earlier co-load checks are read-only for this original carrier.
+    # Subsequent positive Virtual TITLE commits intentionally change it.
+    Assert-EmbeddedCueNoWrite 'before-intentional-virtual-commit'
     $report = Invoke-IsolatedProbe '/metadata-isolation-probe-production-shadow-title'
     & python tests/assert_isolated_virtual_write.py $before $source $report
     if ($LASTEXITCODE -ne 0) { throw 'Independent virtual-write oracle failed' }
@@ -612,7 +615,6 @@ try {
             Write-Host ("REAL_HOST_CUE_TIMING_" + $Architecture + "=" + $test + ":PASS")
         }
     }
-    Assert-EmbeddedCueNoWrite 'before-physical-write-positive-control'
     if ($RunPhysicalMetadata) {
         # Positive counterexample: physical tag writes must remain possible.
         $caseDir = Join-Path $root 'physical-title'
@@ -661,7 +663,6 @@ try {
         Get-Content -LiteralPath $report | Select-Object -First 60 | ForEach-Object { Write-Host "GUARD_PROBE: $_" }
         & python tests/assert_isolated_write_guard.py $before $source $report
         if ($LASTEXITCODE -ne 0) { throw 'Direct Guard byte preservation failed' }
-        Assert-EmbeddedCueNoWrite 'after-direct-virtual-write-guard'
         Write-Host "REAL_HOST_DIRECT_VIRTUAL_WRITE_GUARD_$Architecture=PASS"
     }
 
