@@ -1,0 +1,92 @@
+name: SDK 2026-10-01 full native host E2E (test-only)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/sdk-2026-full-e2e.yml'
+      - 'ci/test-latest-sdk.ps1'
+      - 'tests/**'
+      - 'src/**'
+      - 'component.sln'
+      - 'component.props'
+  workflow_dispatch:
+
+concurrency:
+  group: metadata-isolation-sdk2026-e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  full-new-sdk-host:
+    runs-on: windows-latest
+    timeout-minutes: 16
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: Win32
+            dll: build/foo_metadata_isolation.dll
+          - architecture: x64
+            dll: build/x64/foo_metadata_isolation.dll
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Checkout exact owner SDK 2026-10-01 source
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/foobar2000_component_template
+          ref: 31a35947a7527826c2199491692802e3ce3d8bd7
+          path: external/sdk-template
+          persist-credentials: false
+      - name: Checkout already qualified shared Windows accessibility observer
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/dev-infrastructure-public
+          ref: 3482a2beb4d91c9875bc28b91bd43287bab47bc6
+          path: .ci_shared
+          persist-credentials: false
+      - name: Checkout immutable original foobar installer transport
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/dev-infrastructure-public
+          ref: 35369054c56f4c6ccb2f802944e9675852fd35ec
+          path: .ci_installer
+          persist-credentials: false
+      - uses: microsoft/setup-msbuild@v2
+      - name: Fail-closed candidate publication and source safety
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & python scripts/verify-public-artifact-hold.py
+          if($LASTEXITCODE -ne 0){throw 'Source-only artifact/publication hold failed'}
+          & python tests/verify_source_release_provenance.py
+          if($LASTEXITCODE -ne 0){throw 'Original checked-out source provenance failed'}
+      - name: Stage independently pinned SDK source only inside disposable CI checkout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          ./ci/test-latest-sdk.ps1
+      - name: Compile the real component using SDK 2026-10-01 with disposable E2E probes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          ./validate_project.ps1
+          $wtl=Join-Path (Get-Location) 'wtl/Include'
+          if(-not (Test-Path -LiteralPath (Join-Path $wtl 'atlapp.h') -PathType Leaf)){
+            throw 'Pinned required WTL header unavailable'
+          }
+          $env:CL='/I"' + $wtl + '" ' + $env:CL
+          & msbuild component.sln /t:Build /p:Configuration=Release /p:Platform=${{ matrix.architecture }} /p:EnableTestProbes=true /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
+          if($LASTEXITCODE -ne 0){throw 'Current-SDK full native E2E component compilation failed'}
+          Write-Host 'SDK_2026_FULL_E2E_COMPONENT_${{ matrix.architecture }}=PASS'
+      - name: Exercise real foobar CUE/physical/ReplayGain/writer/UIA/Enter with latest SDK
+        shell: pwsh
+        run: |
+          ./tests/run_isolated_virtual_write.ps1 -Architecture '${{ matrix.architecture }}' -ComponentDll '${{ matrix.dll }}' -RunLargeBenchmark -RunPhysicalMetadata -RunVirtualReplayGain -RunCueTiming -RunDirectGuard -RunUiContracts -RunRealAuditUia -RunRealTimingUia
+          Write-Host 'SDK_2026_FULL_REAL_HOST_E2E_${{ matrix.architecture }}=PASS'
+      # Probe-enabled DLLs, original foobar installers and generated media
+      # never enter artifacts, Actions caches, releases or git history.

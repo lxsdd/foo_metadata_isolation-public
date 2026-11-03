@@ -1,0 +1,147 @@
+name: Source-only historical security triage
+
+# Diagnostic report only: a successful run does not approve v1.0.0.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/source-history-triage.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-history:
+    name: Redacted complete visible Git blob audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Fetch reviewed read-only scanner source
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/dev-infrastructure-public
+          ref: 4a562946975b610651a0a4e71a422699a7a604d9
+          persist-credentials: false
+      - name: Audit reachable history and PR refs without printing credentials
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+          GIT_LFS_SKIP_SMUDGE: '1'
+        run: |
+          set -euo pipefail
+          python3 scripts/audit_git_history.py foo_metadata_isolation-public | tee "$RUNNER_TEMP/mi-history.log"
+          python3 - "$RUNNER_TEMP/mi-history.log" <<'PY'
+          import json,sys
+          from pathlib import Path
+          lines=Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+          matches=[line.split("AUDIT_RESULT_JSON=",1)[1] for line in lines if line.startswith("AUDIT_RESULT_JSON=")]
+          if len(matches)!=1:raise SystemExit("HISTORY_GATE=FAIL no unique redacted audit report")
+          a=json.loads(matches[0])
+          allowed={"ea9bbe91d4aa","da0ccb0a9035","ce643a80efff"}
+          blobs={e.get("blob") for e in a.get("evidence",{}).get("binary_distribution",[])}
+          if not (a.get("status")=="completed" and a.get("repository")=="foo_metadata_isolation-public"
+              and a.get("pr_refs_fetched") is True and a.get("all_visible_blobs_read") is True
+              and a.get("oversized_blob_count")==0 and a.get("hits")=={"binary_distribution":3}
+              and blobs==allowed and a.get("unique_historical_blobs",0)>0):
+              raise SystemExit("HISTORY_GATE=FAIL unexpected historical flags or incomplete scan")
+          print("HISTORY_GATE=PASS only immutable reviewed foobar SDK libraries; complete visible history")
+          PY
+
+  independent-gitleaks:
+    name: Redacted pinned independent Gitleaks history audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Fetch reviewed read-only scanner source
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/dev-infrastructure-public
+          ref: 4a562946975b610651a0a4e71a422699a7a604d9
+          persist-credentials: false
+      # Inspect both exact, immutable historical source lines. The second
+      # false positive was introduced in the first review itself, because a
+      # literal reproduction of the synthetic marker triggers the same rule.
+      # Review by hashes only; never embed an API-key-like sample anew.
+      - name: Read exact original Masstagger test source to prove non-secret fixture
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/foo_metadata_isolation-public
+          ref: f355c31a991fc802f6cf8983ef2a3380ddfbf898
+          path: .reviewed-original-masstagger
+          persist-credentials: false
+      - name: Read exact historical first-review commit to prove the second synthetic-only match
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/foo_metadata_isolation-public
+          ref: 7cd4fbf4ca7d08e38010e349eac5e12474f60882
+          path: .reviewed-first-security-review
+          persist-credentials: false
+      - name: Audit all reachable refs with SHA256 pinned Gitleaks
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          set -euo pipefail
+          python3 scripts/audit_gitleaks.py foo_metadata_isolation-public | tee "$RUNNER_TEMP/mi-gitleaks.log"
+          python3 - "$RUNNER_TEMP/mi-gitleaks.log" <<'PY'
+          import json,sys
+          from pathlib import Path
+          lines=Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+          matches=[line.split("INDEPENDENT_SECRET_AUDIT_JSON=",1)[1] for line in lines
+                   if line.startswith("INDEPENDENT_SECRET_AUDIT_JSON=")]
+          if len(matches)!=1:raise SystemExit("GITLEAKS_GATE=FAIL no unique redacted audit report")
+          a=json.loads(matches[0])
+          import hashlib,subprocess
+          if not (a.get("repository")=="foo_metadata_isolation-public"
+              and a.get("completed") is True and a.get("included_pr_refs") is True
+              and a.get("version")=="8.30.1"):
+              raise SystemExit("GITLEAKS_GATE=FAIL missing/incomplete independent scan")
+          # Two source-only historical *false positives*: the original
+          # explicitly synthetic comment fixture, plus its first verbatim
+          # security-review quote. Validate the full original commit ID,
+          # Git checkout, pathname, exact line and SHA256 without embedding
+          # the flagged literal itself again.
+          reviewed=[
+              {
+                  "directory":".reviewed-original-masstagger",
+                  "commit":"f355c31a991fc802f6cf8983ef2a3380ddfbf898",
+                  "path":"tests/run_real_masstagger_193_e2e.ps1",
+                  "line":120,
+                  "source_line_sha":"02b0491c081bfa5c4823abab903c74db559be8920f249c2ebb9fe05c52a4b6fc",
+                  "redacted":{"rule":"generic-api-key","path_hash":"39b056cbb3e8",
+                      "line":120,"commit_prefix":"f355c31a991f","secret_digest":"b83c7778c23a",
+                      "secret_length":8,"test_file":False}
+              },
+              {
+                  "directory":".reviewed-first-security-review",
+                  "commit":"7cd4fbf4ca7d08e38010e349eac5e12474f60882",
+                  "path":".github/workflows/source-history-triage.yml",
+                  "line":98,
+                  "source_line_sha":"bfbaa31cf88103492c72287dc25b6a9db5e652b232b2e14ffeefd36088634fb8",
+                  "redacted":{"rule":"generic-api-key","path_hash":"d2c4a54734b6",
+                      "line":98,"commit_prefix":"7cd4fbf4ca7d","secret_digest":"b83c7778c23a",
+                      "secret_length":8,"test_file":False}
+              }
+          ]
+          def independently_valid(item):
+              root=Path(item["directory"])
+              commit=subprocess.check_output(["git","rev-parse","HEAD"],cwd=root,text=True).strip()
+              if commit!=item["commit"]:return False
+              path=root/item["path"]
+              if not path.is_file():return False
+              lines=path.read_text(encoding="utf-8").splitlines()
+              return (len(lines)>=item["line"] and hashlib.sha256(
+                  lines[item["line"]-1].encode("utf-8")).hexdigest()==item["source_line_sha"])
+          findings=a.get("redacted_findings")
+          if a.get("findings")==0 and a.get("rules")=={}:
+              print("GITLEAKS_GATE=PASS no redacted findings")
+          elif (a.get("findings")==len(reviewed) and
+                a.get("rules")=={"generic-api-key":len(reviewed)} and
+                isinstance(findings,list) and
+                sorted(findings,key=lambda x:x.get("commit_prefix",""))==
+                sorted([x["redacted"] for x in reviewed],key=lambda x:x["commit_prefix"]) and
+                all(independently_valid(x) for x in reviewed)):
+              print("GITLEAKS_GATE=PASS exactly two immutable synthetic non-credential lines reviewed; zero unresolved findings")
+              print("GITLEAKS_REVIEWED_IMMUTABLE_SYNTHETIC_EXCEPTIONS=2")
+          else:
+              raise SystemExit("GITLEAKS_GATE=FAIL unexpected or unreviewed historical secret finding")
+          PY
