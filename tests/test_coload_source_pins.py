@@ -9,8 +9,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 FLOW = ROOT / ".github/workflows/modified-discogger-coload.yml"
 SDK_PIN = ROOT / "sdk/SDK-PIN.json"
-DISCOGGER = "cf2ce792ca53379436a729e0e7e1ac810fcaed38"
-STUDIO = "3b8cb71965971625842ca0290156149408b971eb"
+DISCOGGER = "a12a6c6770515a032992d82540d7106b36e9ca74"
+STUDIO = "ddf3b5a5b2483dcc5c36b99ec382b76e67be58d9"
 SDK = "31a35947a7527826c2199491692802e3ce3d8bd7"
 INSTALLER = "35369054c56f4c6ccb2f802944e9675852fd35ec"
 ACCESSIBILITY = "3482a2beb4d91c9875bc28b91bd43287bab47bc6"
@@ -225,6 +225,16 @@ class ThreeComponentCurrentSourceTests(unittest.TestCase):
         ):
             self.assertIn(marker, host)
             self.assertIn(marker, host_issues(host.replace(marker, "# disabled guard", 1)))
+
+    def test_inventory_baseline_precedes_original_host_probe(self):
+        host = HOST_SCRIPT.read_text(encoding="utf-8")
+        capture = "$inventoryMtime = (Get-Item -LiteralPath $source).LastWriteTimeUtc.Ticks"
+        probe = "$inventory = Invoke-IsolatedProbe '/metadata-isolation-probe-embedded-cue-inventory'"
+        self.assertLess(host.index(capture), host.index(probe))
+        function = host.split("function Invoke-IsolatedProbe([string]$token) {", 1)[1].split("return $report", 1)[0]
+        self.assertLess(function.index("Get-ReadonlyInventoryFingerprint $source"), function.index("Start-Process"))
+        self.assertGreater(function.index("Assert-ReadonlyInventoryUnchanged $inventoryBaseline"), function.index("if ($stable -lt 4)"))
+        self.assertIn("./tests/readonly_inventory_guard_tests.ps1", self.source)
 
     def test_host_runtime_pin_drift_rejected(self):
         host = HOST_SCRIPT.read_text(encoding="utf-8")

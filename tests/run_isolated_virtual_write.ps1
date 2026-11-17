@@ -17,6 +17,7 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'readonly_inventory_guard.ps1')
 
 if ($env:GITHUB_ACTIONS -ne 'true' -or [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
     throw 'Only disposable GitHub Actions runners are allowed to execute this write test'
@@ -82,10 +83,10 @@ try {
     $studioCoLoad = -not [string]::IsNullOrWhiteSpace($CompanionStudioDll)
     if ($studioCoLoad) {
         if (-not $discoggerCoLoad) { throw 'Three-component host test requires modified Discogger too' }
-        if ($env:DISCOGGER_MODIFIED_SOURCE_SHA -cne 'cf2ce792ca53379436a729e0e7e1ac810fcaed38') {
+        if ($env:DISCOGGER_MODIFIED_SOURCE_SHA -cne 'a12a6c6770515a032992d82540d7106b36e9ca74') {
             throw 'Discogger source pin was not independently verified by the workflow'
         }
-        if ($env:MMS_PINNED_SOURCE_SHA -cne '3b8cb71965971625842ca0290156149408b971eb') {
+        if ($env:MMS_PINNED_SOURCE_SHA -cne 'ddf3b5a5b2483dcc5c36b99ec382b76e67be58d9') {
             throw 'Studio source pin was not independently verified by the workflow'
         }
         $studioDll = (Resolve-Path -LiteralPath $CompanionStudioDll -ErrorAction Stop).Path
@@ -239,6 +240,10 @@ try {
     }
 
     function Invoke-IsolatedProbe([string]$token) {
+        $inventoryBaseline = $null
+        if ($token -ceq '/metadata-isolation-probe-embedded-cue-inventory') {
+            $inventoryBaseline = Get-ReadonlyInventoryFingerprint $source
+        }
         $report = "$source.metadata-isolation-probe.txt"
         if (Test-Path -LiteralPath $report) { throw "Refusing stale report: $token" }
         $launcher = Start-Process -FilePath $exe -WorkingDirectory $portable -ArgumentList @($token,('"' + $source + '"')) -PassThru
@@ -258,9 +263,11 @@ try {
             if ($process.HasExited) { throw "Host exited during $token" }
         }
         if ($stable -lt 4) { throw "Probe report timeout: $token" }
+        if ($null -ne $inventoryBaseline) { Assert-ReadonlyInventoryUnchanged $inventoryBaseline }
         return $report
     }
 
+    $inventoryMtime = (Get-Item -LiteralPath $source).LastWriteTimeUtc.Ticks
     $inventory = Invoke-IsolatedProbe '/metadata-isolation-probe-embedded-cue-inventory'
     $inventoryText = Get-Content -LiteralPath $inventory -Raw
     if ($inventoryText -notmatch '(?m)^inventory_subsong_count=2\s*$') {
@@ -268,7 +275,6 @@ try {
     }
     & python tests/assert_physical_virtual_inventory.py $inventory
     if ($LASTEXITCODE -ne 0) { throw 'Original-host physical/virtual Cue inventory oracle failed' }
-    $inventoryMtime = (Get-Item -LiteralPath $source).LastWriteTimeUtc.Ticks
     # A read-only inventory must never certify a blocked unsafe write.
     if ($inventoryText -notmatch '(?m)^inventory_protection_after=UNKNOWN\s*$') {
         throw "Read-only inventory incorrectly promoted write-block status: $inventoryText"
