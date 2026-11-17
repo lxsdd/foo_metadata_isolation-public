@@ -86,7 +86,7 @@ try {
         if ($env:DISCOGGER_MODIFIED_SOURCE_SHA -cne 'a12a6c6770515a032992d82540d7106b36e9ca74') {
             throw 'Discogger source pin was not independently verified by the workflow'
         }
-        if ($env:MMS_PINNED_SOURCE_SHA -cne 'ddf3b5a5b2483dcc5c36b99ec382b76e67be58d9') {
+        if ($env:MMS_PINNED_SOURCE_SHA -cne 'd179d2aabd5cb16450343c47748184cc2d1a1a9a') {
             throw 'Studio source pin was not independently verified by the workflow'
         }
         $studioDll = (Resolve-Path -LiteralPath $CompanionStudioDll -ErrorAction Stop).Path

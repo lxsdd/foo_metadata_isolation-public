@@ -1,8 +1,9 @@
 # Current three-component qualification
 
 Metadata Isolation baseline: `849a9a9a715b151e13804ae65f8959bad3ceb922`.
-Studio pin: `ddf3b5a5b2483dcc5c36b99ec382b76e67be58d9` (combined Precision CUE,
-all six required source jobs and original Win32/x64 dialog dispatch passed).
+Studio pin: `d179d2aabd5cb16450343c47748184cc2d1a1a9a` (combined Precision CUE,
+marked MP3 scope plus mandatory original mastergrid regressions; exact-head
+partner qualification is required before publication of this pin).
 Discogger pin: `a12a6c6770515a032992d82540d7106b36e9ca74` (selective master
 integration: all-failed optional discovery cannot publish an empty success).
 
@@ -19,3 +20,5 @@ the timestamp and only the bytes (restoring timestamp), and must both reject.
 Combined Win32/x64 co-load, original Masstagger and SDK-host CI must pass on
 this resulting commit; individual partner green runs are not co-load evidence.
 No publication, merge, owner-media access or final GUI acceptance is implied.
+
+The five required Isolation jobs now explicitly check out and verify the product head instead of relying on the synthetic PR merge. This co-load rerun includes the current Studio marked-source implementation and regression additions. Historical successful runs of the older pins do not qualify this new combination.
