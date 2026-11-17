@@ -266,6 +266,9 @@ try {
     if ($inventoryText -notmatch '(?m)^inventory_subsong_count=2\s*$') {
         throw "Fixture was not exposed as two embedded virtual tracks: $inventoryText"
     }
+    & python tests/assert_physical_virtual_inventory.py $inventory
+    if ($LASTEXITCODE -ne 0) { throw 'Original-host physical/virtual Cue inventory oracle failed' }
+    $inventoryMtime = (Get-Item -LiteralPath $source).LastWriteTimeUtc.Ticks
     # A read-only inventory must never certify a blocked unsafe write.
     if ($inventoryText -notmatch '(?m)^inventory_protection_after=UNKNOWN\s*$') {
         throw "Read-only inventory incorrectly promoted write-block status: $inventoryText"
@@ -273,6 +276,9 @@ try {
     if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne
         (Get-FileHash -LiteralPath $before -Algorithm SHA256).Hash) {
         throw 'Read-only inventory changed the physical MP3'
+    }
+    if ((Get-Item -LiteralPath $source).LastWriteTimeUtc.Ticks -ne $inventoryMtime) {
+        throw 'Read-only physical/virtual preview changed physical MP3 timestamp'
     }
     Remove-Item -LiteralPath $inventory -Force
     Write-Host "EMBEDDED_CUE_INVENTORY_$Architecture=PASS"

@@ -958,6 +958,18 @@ public:
                 input_info_reader::ptr inventory;
                 input_entry::g_open_for_info_read(
                     inventory, nullptr, path, fb2k::noAbort);
+                // Original unfiltered virtual Cue view versus physical subsong 0.
+                // A reader-only operation must not promote write permission.
+                input_info_reader::ptr physical;
+                physical ^= manager->open_v3(
+                    input_info_reader::class_guid, nullptr, path,
+                    input_manager_v3::flagSuppressFilters, nullptr, fb2k::noAbort);
+                file_info_impl physical_info;
+                physical->get_info(0, physical_info, fb2k::noAbort);
+                report << "physical_reader_subsongs=" << physical->get_subsong_count() << "\n"
+                       << "physical_reader_target_subsong=0\n";
+                append_info_inventory(report, "physical", 0, physical_info);
+                physical.release();
                 report << "inventory_subsong_count=" << inventory->get_subsong_count() << "\n";
                 for (unsigned index = 0; index < inventory->get_subsong_count(); ++index) {
                     const unsigned subsong = inventory->get_subsong(index);
