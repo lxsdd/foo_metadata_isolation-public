@@ -940,7 +940,16 @@ public:
                 }
                 seen[value] = true;
             }
-            if (valid) ListView_SetColumnOrderArray(m_list, column_count, order.data());
+            if (valid) {
+                const BOOL restored = ListView_SetColumnOrderArray(m_list, column_count, order.data());
+#if defined(FB2K_ENABLE_TEST_PROBES)
+                if (!restored && g_audit_probe_columns_detail.empty())
+                    g_audit_probe_columns_detail = "set_order_failed,header_count=" +
+                        std::to_string(Header_GetItemCount(ListView_GetHeader(m_list)));
+#else
+                (void)restored;
+#endif
+            }
         }
         update_sort_indicator();
     }
@@ -986,7 +995,7 @@ public:
                 passed = passed && actual_order[index] == expected_order;
                 if ((ListView_GetColumnWidth(m_list, index) != expected_width ||
                      actual_order[index] != expected_order) && g_audit_probe_columns_detail.empty()) {
-                    g_audit_probe_columns_detail = "case=" + std::to_string(scenario) +
+                    g_audit_probe_columns_detail = "header_count=" + std::to_string(Header_GetItemCount(ListView_GetHeader(m_list))) + ",case=" + std::to_string(scenario) +
                         ",column=" + std::to_string(index) + ",width=" +
                         std::to_string(ListView_GetColumnWidth(m_list, index)) +
                         ",expected_width=" + std::to_string(expected_width) + ",order=" +
