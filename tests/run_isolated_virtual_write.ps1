@@ -712,6 +712,7 @@ try {
         $adapter = Join-Path (Get-Location).Path '.ci_shared/scripts/windows-ui-accessibility.ps1'
         & ./tests/assert_real_audit_uia.ps1 -FoobarPid $process.Id -Executable $exe -Workdir $portable -FixturePath $source -AdapterPath $adapter
         $columnReport = Invoke-IsolatedProbe '/metadata-isolation-probe-audit-internal-ui-state'
+        Get-Content -LiteralPath $columnReport | Select-String -Pattern '^audit_column_restore' | ForEach-Object { Write-Host $_ }
         if (-not (Select-String -LiteralPath $columnReport -Pattern '^audit_column_restore_pass=true$' -Quiet)) {
             throw 'Original native column restoration regression failed'
         }

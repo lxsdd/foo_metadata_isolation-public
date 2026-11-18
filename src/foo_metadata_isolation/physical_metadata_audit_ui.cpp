@@ -118,6 +118,7 @@ static_assert(audit_valid_sort_column(999) == column_count - 1);
 #if defined(FB2K_ENABLE_TEST_PROBES)
 // Only synthetic CI snapshots. Never record paths, metadata or user values.
 std::atomic_bool g_audit_probe_columns_pass{false};
+std::string g_audit_probe_columns_detail;
 std::atomic_size_t g_audit_probe_model_rows{0};
 std::atomic_size_t g_audit_probe_filtered_rows{0};
 std::atomic_int g_audit_probe_native_rows{-1};
@@ -958,6 +959,8 @@ public:
             ListView_SetColumnOrderArray(m_list, column_count, order.data());
         };
         bool passed = true;
+        int scenario = 0;
+        g_audit_probe_columns_detail.clear();
         std::vector<int> reverse_order;
         std::vector<int> widths(column_count, 177);
         for (int index = column_count - 1; index >= 0; --index)
@@ -965,6 +968,7 @@ public:
         const std::string order_text = join_int_list(reverse_order);
         const std::string width_text = join_int_list(widths);
         const auto check = [&](const std::string& state, bool valid) {
+            ++scenario;
             reset_native();
             g_cfg_audit_columns = width_text.c_str();
             g_cfg_audit_column_state = state.c_str();
@@ -980,6 +984,14 @@ public:
                 passed = passed && ListView_GetColumnWidth(m_list, index) == expected_width;
                 const int expected_order = valid ? column_count - 1 - index : index;
                 passed = passed && actual_order[index] == expected_order;
+                if ((ListView_GetColumnWidth(m_list, index) != expected_width ||
+                     actual_order[index] != expected_order) && g_audit_probe_columns_detail.empty()) {
+                    g_audit_probe_columns_detail = "case=" + std::to_string(scenario) +
+                        ",column=" + std::to_string(index) + ",width=" +
+                        std::to_string(ListView_GetColumnWidth(m_list, index)) +
+                        ",expected_width=" + std::to_string(expected_width) + ",order=" +
+                        std::to_string(actual_order[index]) + ",expected_order=" + std::to_string(expected_order);
+                }
             }
         };
         check("2|" + order_text, true);
@@ -997,7 +1009,12 @@ public:
         for (int index = 0; index < column_count; ++index) {
             const int expected_width = k_columns[index].default_visible
                 ? MulDiv(k_columns[index].default_width, static_cast<int>(m_dpi), 96) : 0;
-            passed = passed && ListView_GetColumnWidth(m_list, index) == expected_width;
+            const int actual_width = ListView_GetColumnWidth(m_list, index);
+            passed = passed && actual_width == expected_width;
+            if (actual_width != expected_width && g_audit_probe_columns_detail.empty()) {
+                g_audit_probe_columns_detail = "case=invalid-width,column=" + std::to_string(index) +
+                    ",width=" + std::to_string(actual_width) + ",expected_width=" + std::to_string(expected_width);
+            }
         }
         g_cfg_audit_columns = saved_widths.get_ptr();
         g_cfg_audit_column_state = saved_state.get_ptr();
@@ -1584,6 +1601,7 @@ mainmenu_commands_factory_t<audit_mainmenu_commands> g_audit_mainmenu_commands;
 #if defined(FB2K_ENABLE_TEST_PROBES)
 void read_audit_internal_state_for_test(pfc::string_base& output) {
     output << "audit_column_restore_pass=" << (g_audit_probe_columns_pass.load() ? "true" : "false") << "\n"
+           << "audit_column_restore_detail=" << g_audit_probe_columns_detail.c_str() << "\n"
            << "audit_model_rows=" << g_audit_probe_model_rows.load() << "\n"
            << "audit_filtered_rows=" << g_audit_probe_filtered_rows.load() << "\n"
            << "audit_native_rows=" << g_audit_probe_native_rows.load() << "\n"
