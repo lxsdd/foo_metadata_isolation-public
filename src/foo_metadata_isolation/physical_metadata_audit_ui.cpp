@@ -330,33 +330,7 @@ public:
         m_tooltips.initialize(window, physical_audit_tooltip_definitions());
         if (m_tooltips.window() != nullptr) m_dark.AddCtrlAuto(m_tooltips.window());
 
-        ListView_SetExtendedListViewStyleEx(
-            m_list,
-            LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_HEADERDRAGDROP | LVS_EX_LABELTIP |
-                LVS_EX_INFOTIP,
-            LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_HEADERDRAGDROP | LVS_EX_LABELTIP |
-                LVS_EX_INFOTIP);
-
-        for (int index = 0; index < column_count; ++index) {
-            LVCOLUMNW column = {};
-            column.mask = LVCF_FMT | LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
-            column.fmt = LVCFMT_LEFT;
-            column.iSubItem = index;
-            column.pszText = const_cast<wchar_t*>(k_columns[index].title);
-            column.cx = ui::scale_for_window_dpi(window, k_columns[index].default_width);
-            ListView_InsertColumn(m_list, index, &column);
-        }
-        m_tooltips.add_control(
-            window,
-            ListView_GetHeader(m_list),
-            L"Click a header to sort. Right-click a header to show or hide columns. "
-            L"Physical tag columns show subsong-0 values; Cue columns show only "
-            L"unambiguous global Cue values used for exact comparison.");
-
-#if defined(FB2K_ENABLE_TEST_PROBES)
-        verify_column_restore_for_test();
-#endif
-        restore_columns();
+        initialize_result_columns();
         setup_filter();
         restore_geometry();
         layout();
@@ -869,6 +843,46 @@ public:
         g_cfg_audit_column_state = state.str().c_str();
     }
 
+    void initialize_result_columns() {
+        // Native theme setup can replace the resource ListView. Resolve it
+        // after theme hooks and initialize the current control, including
+        // its columns, rather than just rebinding rows during a later scan.
+        m_list = GetDlgItem(m_window, IDC_AUDIT_RESULTS);
+        if (m_list == nullptr || !IsWindow(m_list))
+            throw pfc::exception("Audit result ListView is unavailable");
+        ListView_SetExtendedListViewStyleEx(
+            m_list,
+            LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_HEADERDRAGDROP | LVS_EX_LABELTIP |
+                LVS_EX_INFOTIP,
+            LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_HEADERDRAGDROP | LVS_EX_LABELTIP |
+                LVS_EX_INFOTIP);
+
+        const int existing_columns = Header_GetItemCount(ListView_GetHeader(m_list));
+        if (existing_columns != 0 && existing_columns != column_count)
+            throw pfc::exception("Audit result column schema is incomplete");
+        for (int index = existing_columns; index < column_count; ++index) {
+            LVCOLUMNW column = {};
+            column.mask = LVCF_FMT | LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
+            column.fmt = LVCFMT_LEFT;
+            column.iSubItem = index;
+            column.pszText = const_cast<wchar_t*>(k_columns[index].title);
+            column.cx = ui::scale_for_window_dpi(window, k_columns[index].default_width);
+            if (ListView_InsertColumn(m_list, index, &column) != index)
+                throw pfc::exception("Audit result column creation failed");
+        }
+        m_tooltips.add_control(
+            m_window,
+            ListView_GetHeader(m_list),
+            L"Click a header to sort. Right-click a header to show or hide columns. "
+            L"Physical tag columns show subsong-0 values; Cue columns show only "
+            L"unambiguous global Cue values used for exact comparison.");
+
+#if defined(FB2K_ENABLE_TEST_PROBES)
+        verify_column_restore_for_test();
+#endif
+        restore_columns();
+    }
+
     void restore_columns() {
         const pfc::string8 saved_widths = g_cfg_audit_columns.get();
         const std::vector<int> widths = parse_int_list(saved_widths.get_ptr());
@@ -1058,7 +1072,9 @@ public:
         if (current_list == nullptr || !IsWindow(current_list)) {
             throw pfc::exception("Audit result ListView is unavailable");
         }
-        m_list = current_list;
+        if (m_list != current_list) {
+            initialize_result_columns();
+        }
         std::set<std::string> selected_paths;
         if (preserve_selection) {
             int item = -1;
