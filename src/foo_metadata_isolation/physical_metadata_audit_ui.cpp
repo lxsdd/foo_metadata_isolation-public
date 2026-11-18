@@ -158,7 +158,10 @@ std::vector<int> parse_int_list(const char* value) {
     std::string part;
     while (std::getline(stream, part, ',')) {
         try {
-            output.push_back(std::stoi(part));
+            size_t consumed = 0;
+            const int parsed = std::stoi(part, &consumed);
+            if (consumed != part.size()) return {};
+            output.push_back(parsed);
         } catch (...) {
             return {};
         }
@@ -876,16 +879,34 @@ public:
         std::string state(saved_state.get_ptr());
         const size_t separator = state.find('|');
         std::vector<int> order;
-        if (separator != std::string::npos) {
+        if (separator != std::string::npos &&
+            state.find('|', separator + 1) == std::string::npos) {
             try {
-                const unsigned mask = static_cast<unsigned>(
-                    std::stoul(state.substr(0, separator)));
-                for (int index = 0; index < column_count; ++index) {
-                    m_column_visible[index] = (mask & (1u << index)) != 0;
+                const std::string mask_text = state.substr(0, separator);
+                size_t consumed = 0;
+                const unsigned long parsed_mask = std::stoul(mask_text, &consumed, 10);
+                const std::vector<int> parsed_order =
+                    parse_int_list(state.substr(separator + 1).c_str());
+                bool valid_order = parsed_order.size() == column_count;
+                std::vector<bool> seen(column_count, false);
+                for (int value : parsed_order) {
+                    if (value < 0 || value >= column_count || seen[value]) {
+                        valid_order = false;
+                        break;
+                    }
+                    seen[value] = true;
                 }
-                order = parse_int_list(state.substr(separator + 1).c_str());
+                if (consumed == mask_text.size() &&
+                    parsed_mask != 0 &&
+                    (parsed_mask >> column_count) == 0 && valid_order) {
+                    const unsigned mask = static_cast<unsigned>(parsed_mask);
+                    for (int index = 0; index < column_count; ++index) {
+                        m_column_visible[index] = (mask & (1u << index)) != 0;
+                    }
+                    order = parsed_order;
+                }
             } catch (...) {
-                order.clear();
+                // Corrupt persisted state must leave the native default columns intact.
             }
         }
         int visible_count = 0;

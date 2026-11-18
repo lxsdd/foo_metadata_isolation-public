@@ -118,3 +118,13 @@ for standard in (
     assert standard in AGENTS
 
 print("Physical Metadata Audit static safety/UI contract: PASS")
+
+# Persisted column settings are untrusted. Parsing must consume complete
+# numeric tokens and validate visibility + permutation before mutating UI.
+assert "std::stoi(part, &consumed)" in UI
+assert "consumed != part.size()" in UI
+assert "std::stoul(mask_text, &consumed, 10)" in UI
+assert "consumed == mask_text.size()" in UI
+assert "parsed_mask >> column_count" in UI
+assert "valid_order" in UI
+assert "order = parsed_order" in UI
