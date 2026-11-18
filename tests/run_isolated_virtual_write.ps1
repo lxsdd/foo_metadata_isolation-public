@@ -83,10 +83,10 @@ try {
     $studioCoLoad = -not [string]::IsNullOrWhiteSpace($CompanionStudioDll)
     if ($studioCoLoad) {
         if (-not $discoggerCoLoad) { throw 'Three-component host test requires modified Discogger too' }
-        if ($env:DISCOGGER_MODIFIED_SOURCE_SHA -cne 'a12a6c6770515a032992d82540d7106b36e9ca74') {
+        if ($env:DISCOGGER_MODIFIED_SOURCE_SHA -cne 'e67f9c97423e2f5a7736e91b3399ac531e05d844') {
             throw 'Discogger source pin was not independently verified by the workflow'
         }
-        if ($env:MMS_PINNED_SOURCE_SHA -cne 'd179d2aabd5cb16450343c47748184cc2d1a1a9a') {
+        if ($env:MMS_PINNED_SOURCE_SHA -cne 'bcf5d456cdf86fae7d986849468d78f9edb5e995') {
             throw 'Studio source pin was not independently verified by the workflow'
         }
         $studioDll = (Resolve-Path -LiteralPath $CompanionStudioDll -ErrorAction Stop).Path
@@ -711,6 +711,11 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Real Audit UI fixture generation failed' }
         $adapter = Join-Path (Get-Location).Path '.ci_shared/scripts/windows-ui-accessibility.ps1'
         & ./tests/assert_real_audit_uia.ps1 -FoobarPid $process.Id -Executable $exe -Workdir $portable -FixturePath $source -AdapterPath $adapter
+        $columnReport = Invoke-IsolatedProbe '/metadata-isolation-probe-audit-internal-ui-state'
+        if (-not (Select-String -LiteralPath $columnReport -Pattern '^audit_column_restore_pass=true$' -Quiet)) {
+            throw 'Original native column restoration regression failed'
+        }
+        Write-Host "REAL_HOST_COLUMN_RESTORE_$Architecture=PASS"
         Write-Host "REAL_HOST_PRODUCTION_AUDIT_UIA_$Architecture=PASS"
     }
 

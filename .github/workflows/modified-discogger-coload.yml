@@ -44,14 +44,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: lxsdd/foo_discogger
-          ref: a12a6c6770515a032992d82540d7106b36e9ca74
+          ref: e67f9c97423e2f5a7736e91b3399ac531e05d844
           path: external/discogger-draft
           persist-credentials: false
       - name: Pinned current Music Metadata Studio draft checkout
         uses: actions/checkout@v4
         with:
           repository: lxsdd/music-metadata-studio
-          ref: d179d2aabd5cb16450343c47748184cc2d1a1a9a
+          ref: bcf5d456cdf86fae7d986849468d78f9edb5e995
           path: external/studio-draft
           persist-credentials: false
       - name: Exact reviewed SDK template for Metadata Isolation
@@ -94,9 +94,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $expected='a12a6c6770515a032992d82540d7106b36e9ca74'
+          $expected='e67f9c97423e2f5a7736e91b3399ac531e05d844'
           if((& git -C external/discogger-draft rev-parse HEAD).Trim() -cne $expected){throw 'Modified Discogger source SHA mismatch'}
-          $studioExpected='d179d2aabd5cb16450343c47748184cc2d1a1a9a'
+          $studioExpected='bcf5d456cdf86fae7d986849468d78f9edb5e995'
           if((& git -C external/studio-draft rev-parse HEAD).Trim() -cne $studioExpected){throw 'Studio source SHA mismatch'}
           & python scripts/verify-public-artifact-hold.py
           if($LASTEXITCODE -ne 0){throw 'Source-only artifact hold failed'}
@@ -154,8 +154,8 @@ jobs:
       - name: Real original Win32/x64 three-component co-load and synthetic physical safety
         shell: pwsh
         env:
-          DISCOGGER_MODIFIED_SOURCE_SHA: a12a6c6770515a032992d82540d7106b36e9ca74
-          MMS_PINNED_SOURCE_SHA: d179d2aabd5cb16450343c47748184cc2d1a1a9a
+          DISCOGGER_MODIFIED_SOURCE_SHA: e67f9c97423e2f5a7736e91b3399ac531e05d844
+          MMS_PINNED_SOURCE_SHA: bcf5d456cdf86fae7d986849468d78f9edb5e995
         run: |
           $ErrorActionPreference='Stop'
           $arch='${{ matrix.architecture }}'

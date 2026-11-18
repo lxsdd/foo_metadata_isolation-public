@@ -117,6 +117,7 @@ static_assert(audit_valid_sort_column(999) == column_count - 1);
 
 #if defined(FB2K_ENABLE_TEST_PROBES)
 // Only synthetic CI snapshots. Never record paths, metadata or user values.
+std::atomic_bool g_audit_probe_columns_pass{false};
 std::atomic_size_t g_audit_probe_model_rows{0};
 std::atomic_size_t g_audit_probe_filtered_rows{0};
 std::atomic_int g_audit_probe_native_rows{-1};
@@ -351,6 +352,9 @@ public:
             L"Physical tag columns show subsong-0 values; Cue columns show only "
             L"unambiguous global Cue values used for exact comparison.");
 
+#if defined(FB2K_ENABLE_TEST_PROBES)
+        verify_column_restore_for_test();
+#endif
         restore_columns();
         setup_filter();
         restore_geometry();
@@ -940,6 +944,68 @@ public:
         update_sort_indicator();
     }
 
+#if defined(FB2K_ENABLE_TEST_PROBES)
+    void verify_column_restore_for_test() {
+        const pfc::string8 saved_widths = g_cfg_audit_columns.get();
+        const pfc::string8 saved_state = g_cfg_audit_column_state.get();
+        const auto reset_native = [&] {
+            std::vector<int> order(column_count);
+            for (int index = 0; index < column_count; ++index) {
+                order[index] = index;
+                m_column_visible[index] = k_columns[index].default_visible;
+                m_column_widths[index] = k_columns[index].default_width;
+            }
+            ListView_SetColumnOrderArray(m_list, column_count, order.data());
+        };
+        bool passed = true;
+        std::vector<int> reverse_order;
+        std::vector<int> widths(column_count, 177);
+        for (int index = column_count - 1; index >= 0; --index)
+            reverse_order.push_back(index);
+        const std::string order_text = join_int_list(reverse_order);
+        const std::string width_text = join_int_list(widths);
+        const auto check = [&](const std::string& state, bool valid) {
+            reset_native();
+            g_cfg_audit_columns = width_text.c_str();
+            g_cfg_audit_column_state = state.c_str();
+            restore_columns(); // Same cfg-backed implementation as normal startup.
+            std::vector<int> actual_order(column_count);
+            passed = ListView_GetColumnOrderArray(
+                m_list, column_count, actual_order.data()) != FALSE && passed;
+            for (int index = 0; index < column_count; ++index) {
+                const bool visible = valid ? index == column_file
+                                           : k_columns[index].default_visible;
+                const int expected_width = visible
+                    ? MulDiv(177, static_cast<int>(m_dpi), 96) : 0;
+                passed = passed && ListView_GetColumnWidth(m_list, index) == expected_width;
+                const int expected_order = valid ? column_count - 1 - index : index;
+                passed = passed && actual_order[index] == expected_order;
+            }
+        };
+        check("2|" + order_text, true);
+        check("2junk|" + order_text, false);
+        check("2|" + order_text + "junk", false);
+        check("0|" + order_text, false);
+        check("65536|" + order_text, false);
+        check("2|0,0,2,3,4,5,6,7,8,9,10,11,12,13,14", false);
+        check("2|" + order_text + "|0", false);
+        // Width parsing must also reject a partial final integer.
+        reset_native();
+        g_cfg_audit_column_state = "";
+        g_cfg_audit_columns = (width_text + "junk").c_str();
+        restore_columns();
+        for (int index = 0; index < column_count; ++index) {
+            const int expected_width = k_columns[index].default_visible
+                ? MulDiv(k_columns[index].default_width, static_cast<int>(m_dpi), 96) : 0;
+            passed = passed && ListView_GetColumnWidth(m_list, index) == expected_width;
+        }
+        g_cfg_audit_columns = saved_widths.get_ptr();
+        g_cfg_audit_column_state = saved_state.get_ptr();
+        reset_native();
+        g_audit_probe_columns_pass.store(passed);
+    }
+#endif
+
     void setup_filter() {
         constexpr const wchar_t* filters[] = {
             L"Problems",
@@ -1517,7 +1583,8 @@ mainmenu_commands_factory_t<audit_mainmenu_commands> g_audit_mainmenu_commands;
 
 #if defined(FB2K_ENABLE_TEST_PROBES)
 void read_audit_internal_state_for_test(pfc::string_base& output) {
-    output << "audit_model_rows=" << g_audit_probe_model_rows.load() << "\n"
+    output << "audit_column_restore_pass=" << (g_audit_probe_columns_pass.load() ? "true" : "false") << "\n"
+           << "audit_model_rows=" << g_audit_probe_model_rows.load() << "\n"
            << "audit_filtered_rows=" << g_audit_probe_filtered_rows.load() << "\n"
            << "audit_native_rows=" << g_audit_probe_native_rows.load() << "\n"
            << "audit_insert_result=" << g_audit_probe_insert_result.load() << "\n"

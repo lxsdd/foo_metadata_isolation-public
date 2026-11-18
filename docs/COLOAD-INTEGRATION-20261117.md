@@ -1,10 +1,10 @@
 # Current three-component qualification
 
 Metadata Isolation baseline: `849a9a9a715b151e13804ae65f8959bad3ceb922`.
-Studio pin: `d179d2aabd5cb16450343c47748184cc2d1a1a9a` (combined Precision CUE,
+Studio pin: `bcf5d456cdf86fae7d986849468d78f9edb5e995` (combined Precision CUE,
 marked MP3 scope plus mandatory original mastergrid regressions; exact-head
 partner qualification is required before publication of this pin).
-Discogger pin: `a12a6c6770515a032992d82540d7106b36e9ca74` (selective master
+Discogger pin: `e67f9c97423e2f5a7736e91b3399ac531e05d844` (selective master
 integration: all-failed optional discovery cannot publish an empty success).
 
 The co-load workflow builds these immutable sources together with this exact
@@ -32,3 +32,9 @@ is changed; the default visible columns remain available. The original native
 Win32/x64 audit and host workflows must qualify this source together with the
 existing immutable Studio/Discogger pins. This is not a new partner pin or a
 release acceptance.
+
+## Native persisted-column regression
+
+The FB2K_ENABLE_TEST_PROBES build injects valid and corrupt cfg-backed column states in the actual Audit dialog, calls the production restore_columns implementation and checks ListView widths and header order. It covers a valid reversed order and visibility mask, trailing junk in mask/order/widths, empty/out-of-range masks, duplicate indices and extra separators. Original cfg values and native defaults are restored before normal initialization. The existing original-host UIA run now requires audit_column_restore_pass=true from the existing read-only diagnostic command. Production builds omit the injection.
+
+Partner pins advance to Studio bcf5d456 (six required jobs PASS including original dialog Win32/x64) and Discogger e67f9c97 (complete native CI PASS). New joint host qualification remains pending on this commit.
