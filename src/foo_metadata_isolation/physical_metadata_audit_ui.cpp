@@ -866,7 +866,7 @@ public:
             column.fmt = LVCFMT_LEFT;
             column.iSubItem = index;
             column.pszText = const_cast<wchar_t*>(k_columns[index].title);
-            column.cx = ui::scale_for_window_dpi(window, k_columns[index].default_width);
+            column.cx = ui::scale_for_window_dpi(m_window, k_columns[index].default_width);
             if (ListView_InsertColumn(m_list, index, &column) != index)
                 throw pfc::exception("Audit result column creation failed");
         }
