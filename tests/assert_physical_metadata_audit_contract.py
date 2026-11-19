@@ -128,3 +128,11 @@ assert "consumed == mask_text.size()" in UI
 assert "parsed_mask >> column_count" in UI
 assert "valid_order" in UI
 assert "order = parsed_order" in UI
+
+# Empty scope must invalidate old physical targets before returning, rather
+# than leaving the previous selection available to the Properties command.
+EMPTY_SCOPE = UI.split("if (state->source_items.get_count() == 0) {", 1)[1].split("\n        m_scan = state;", 1)[0]
+assert EMPTY_SCOPE.index("m_rows.clear();") < EMPTY_SCOPE.index("refresh_list(false);")
+assert EMPTY_SCOPE.index("refresh_list(false);") < EMPTY_SCOPE.index("return;")
+assert "update_edit_enabled();" in UI.split("void refresh_list(bool preserve_selection)", 1)[1]
+assert "if (m_scan) return;" in UI.split("void edit_selected_physical()", 1)[1]

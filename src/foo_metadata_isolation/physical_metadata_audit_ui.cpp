@@ -385,6 +385,14 @@ public:
         }
 
         if (state->source_items.get_count() == 0) {
+            // An empty scope replaces the previous result set. Invalidate the
+            // physical targets before returning, including after a cancelled
+            // scan switches to an empty selection. refresh_list() clears the
+            // native selection, accessible detail and Edit eligibility.
+            m_rows.clear();
+            refresh_list(false);
+            EnableWindow(GetDlgItem(m_window, IDC_AUDIT_RESCAN), TRUE);
+            EnableWindow(GetDlgItem(m_window, IDC_AUDIT_CANCEL), FALSE);
             set_text(m_window, IDC_AUDIT_STATUS, "Nothing to audit in the current scope.");
             return;
         }
