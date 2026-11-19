@@ -136,3 +136,9 @@ assert EMPTY_SCOPE.index("m_rows.clear();") < EMPTY_SCOPE.index("refresh_list(fa
 assert EMPTY_SCOPE.index("refresh_list(false);") < EMPTY_SCOPE.index("return;")
 assert "update_edit_enabled();" in UI.split("void refresh_list(bool preserve_selection)", 1)[1]
 assert "if (m_scan) return;" in UI.split("void edit_selected_physical()", 1)[1]
+
+# A nonempty replacement scan must also hide previous physical targets and
+# accessible detail before the worker is started, not just disable Properties.
+NONEMPTY_START = UI.split('void on_start_scan() {', 1)[1].split('state->logger.standard(', 1)[0]
+assert NONEMPTY_START.index('m_rows.clear();', NONEMPTY_START.index('if (state->source_items.get_count() == 0)')) < NONEMPTY_START.index('m_scan = state;')
+assert NONEMPTY_START.index('refresh_list(false);', NONEMPTY_START.index('if (state->source_items.get_count() == 0)')) < NONEMPTY_START.index('m_scan = state;')

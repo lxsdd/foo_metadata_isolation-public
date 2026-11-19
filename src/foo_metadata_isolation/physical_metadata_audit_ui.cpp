@@ -397,6 +397,13 @@ public:
             return;
         }
 
+        // A new nonempty scope must not display the previous scope's physical
+        // targets while the asynchronous read-only scan is running. Clearing
+        // the model and native ListView also invalidates the selected-result
+        // accessible value; the new batch is published only on completion.
+        m_rows.clear();
+        refresh_list(false);
+
         m_scan = state;
         m_close_when_done = false;
         set_scan_busy(true);

@@ -40,3 +40,13 @@ The FB2K_ENABLE_TEST_PROBES build injects valid and corrupt cfg-backed column st
 Partner pins advance to Studio bcf5d456 (six required jobs PASS including original dialog Win32/x64) and Discogger e67f9c97 (complete native CI PASS). New joint host qualification remains pending on this commit.
 
 The new original-host regression exposed a production lifecycle defect on both architectures: theme initialization replaced the ListView and its current header had zero columns. Row refresh already rebound the HWND, but column initialization still used the earlier handle. Column setup now resolves the current control after theme hooks and repeats after a later replacement, validates the existing schema and rejects failed column creation. This preserves real widths/order and prevents duplicating existing columns.
+
+## Audit replacement-scan invalidation (19 November 2026)
+
+The existing empty-scope invalidation remains intact. A subsequent nonempty
+read-only scan now invalidates the prior physical target rows, native selection,
+and accessible detail **before** starting the asynchronous worker. The original
+foobar host regression checks the live rescan transition when the scanning
+state is observable and requires the existing completed synthetic classification.
+The static safety contract also asserts the pre-worker ordering. This does not
+claim full UIA row-provider exposure, Preset/Rollback acceptance, or media writes.

@@ -475,6 +475,24 @@ for($i=0;$i -lt 40;$i++){
 if(-not $scanObserved){
   throw 'Native Rescan did not trigger an observable read-only scan'
 }
+# The synchronous BM_CLICK above enters production on_start_scan before the
+# worker can publish a new batch. While scanning, no old physical row or
+# selected accessible value may remain. A very fast completed scan is allowed.
+if(([MetadataIsolationWindowLocator]::Status($window)).StartsWith('Scanning physical metadata')){
+  $duringRows=[MetadataIsolationWindowLocator]::ItemCount($window)
+  $duringStatus=[MetadataIsolationWindowLocator]::Status($window)
+  if($duringStatus.StartsWith('Scanning physical metadata') -and $duringRows -ne 0){
+    throw 'Native rescan retained stale physical results while scan is active'
+  }
+  if($duringStatus.StartsWith('Scanning physical metadata')){
+    $duringDetail=[MetadataIsolationAuditDetailAccessibility]::GetNativeAccessibleValue($detailHwnd)
+    $afterDetailStatus=[MetadataIsolationWindowLocator]::Status($window)
+    if($afterDetailStatus.StartsWith('Scanning physical metadata') -and
+       $duringDetail -cne 'No result selected.'){
+      throw 'Native rescan retained stale accessible physical target'
+    }
+  }
+}
 Assert-CompletedAudit $window
 Write-Host 'PRODUCTION_AUDIT_NATIVE_RESCAN=PASS'
 if((Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash -ne $before){
