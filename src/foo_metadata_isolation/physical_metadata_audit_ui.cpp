@@ -15,6 +15,7 @@
 #include <memory>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <vector>
 
 namespace metadata_isolation {
@@ -23,6 +24,9 @@ namespace {
 constexpr UINT WM_AUDIT_START = WM_APP + 0x61;
 constexpr UINT WM_AUDIT_PROGRESS = WM_APP + 0x62;
 constexpr UINT WM_AUDIT_DONE = WM_APP + 0x63;
+#if defined(FB2K_ENABLE_TEST_PROBES)
+constexpr UINT WM_AUDIT_TEST_LIBRARY_FAILURE = WM_APP + 0x64;
+#endif
 
 constexpr int k_filter_problems = 0;
 constexpr int k_filter_all = 1;
@@ -379,6 +383,12 @@ public:
         auto state = std::make_shared<scan_state>(m_scope);
         if (m_scope == audit_scope::library) {
             try {
+#if defined(FB2K_ENABLE_TEST_PROBES)
+                if (m_test_fail_next_library_enumeration) {
+                    m_test_fail_next_library_enumeration = false;
+                    throw std::runtime_error("Synthetic CI library enumeration failure");
+                }
+#endif
                 library_manager::get()->get_all_items(state->source_items);
             } catch (const std::exception& error) {
                 // The requested library scope has already replaced the prior
@@ -390,6 +400,10 @@ public:
                 EnableWindow(GetDlgItem(m_window, IDC_AUDIT_CANCEL), FALSE);
                 set_text(m_window, IDC_AUDIT_STATUS,
                     "Media Library enumeration failed; no audit results are available.");
+#if defined(FB2K_ENABLE_TEST_PROBES)
+                // Keep the synthetic host probe nonmodal; production errors still notify.
+                if (std::string(error.what()) == "Synthetic CI library enumeration failure") return;
+#endif
                 show_error("The Media Library could not be enumerated.", error.what());
                 return;
             }
@@ -1511,6 +1525,20 @@ public:
         case WM_CLOSE:
             self->close();
             return TRUE;
+#if defined(FB2K_ENABLE_TEST_PROBES)
+        case WM_AUDIT_TEST_LIBRARY_FAILURE: {
+            wchar_t actions[8] = {};
+            wchar_t runner_temp[2] = {};
+            if (GetEnvironmentVariableW(L"GITHUB_ACTIONS", actions, 8) == 4 &&
+                wcscmp(actions, L"true") == 0 &&
+                GetEnvironmentVariableW(L"RUNNER_TEMP", runner_temp, 2) > 0) {
+                self->m_test_fail_next_library_enumeration = true;
+                metadb_handle_list empty;
+                self->request_scope(audit_scope::library, empty);
+            }
+            return TRUE;
+        }
+#endif
         case WM_AUDIT_START:
             self->on_start_scan();
             return TRUE;
@@ -1610,6 +1638,9 @@ private:
     bool m_column_visible[column_count] = {};
     bool m_close_when_done = false;
     bool m_pending_scan = false;
+#if defined(FB2K_ENABLE_TEST_PROBES)
+    bool m_test_fail_next_library_enumeration = false;
+#endif
     bool m_modeless_registered = false;
     bool m_refreshing_list = false;
     audit_scope m_pending_scope = audit_scope::library;

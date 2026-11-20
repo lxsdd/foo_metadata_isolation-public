@@ -74,6 +74,10 @@ public static class MetadataIsolationWindowLocator {
     if(button==IntPtr.Zero) throw new InvalidOperationException("Physical Properties control missing");
     return IsWindowEnabled(button);
   }
+  public static void FailNextLibraryEnumeration(IntPtr window) {
+    if (!PostMessage(window,0x8000+0x64,IntPtr.Zero,IntPtr.Zero))
+      throw new InvalidOperationException("Synthetic library enumeration probe rejected");
+  }
   public static void Rescan(IntPtr window) {
     IntPtr button=GetDlgItem(window,1204);
     if (button==IntPtr.Zero || !IsWindowEnabled(button))
@@ -504,6 +508,41 @@ if(([MetadataIsolationWindowLocator]::Status($window)).StartsWith('Scanning phys
 }
 Assert-CompletedAudit $window
 Write-Host 'PRODUCTION_AUDIT_NATIVE_RESCAN=PASS'
+[MetadataIsolationWindowLocator]::FailNextLibraryEnumeration($window)
+$failureSeen=$false
+for($i=0;$i -lt 80;$i++){
+  if(([MetadataIsolationWindowLocator]::Status($window)) -eq
+     'Media Library enumeration failed; no audit results are available.'){
+    $failureSeen=$true;break
+  }
+  Start-Sleep -Milliseconds 50
+}
+if(-not $failureSeen){throw 'Native library enumeration exception was not observed'}
+if([MetadataIsolationWindowLocator]::ItemCount($window) -ne 0 -or
+   [MetadataIsolationWindowLocator]::PhysicalEditEnabled($window)){
+  throw 'Library enumeration failure retained stale physical targets'
+}
+$failedDetail=[MetadataIsolationAuditDetailAccessibility]::GetNativeAccessibleValue($detailHwnd)
+if($failedDetail -cne 'No result selected.'){
+  throw 'Library enumeration failure retained stale accessible selected-result value'
+}
+$failedMsaa=[IsolatedAuditMsaa]::ChildCount($ownedList)
+if($failedMsaa[0] -ne 0 -or $failedMsaa[1] -ne 0){
+  throw 'Library enumeration failure retained stale native MSAA rows'
+}
+Write-Host 'PRODUCTION_AUDIT_LIBRARY_EXCEPTION_TARGET_INVALIDATION=PASS'
+Open-Audit $context
+if((Find-Audit) -ne $window){throw 'Library failure recovery replaced the audit window'}
+Assert-CompletedAudit $window
+if([MetadataIsolationWindowLocator]::ItemCount($window) -ne 1){
+  throw 'Audit selection did not recover after library enumeration failure'
+}
+$recoveredMsaa=[IsolatedAuditMsaa]::ChildRoleSummary($ownedList)
+if($recoveredMsaa[0] -ne 0 -or $recoveredMsaa[2] -ne 1 -or
+   $recoveredMsaa[3] -ne 1 -or $recoveredMsaa[4] -ne 0){
+  throw 'Native MSAA result row did not recover after library enumeration failure'
+}
+Write-Host 'PRODUCTION_AUDIT_LIBRARY_EXCEPTION_RECOVERY_MSAA=PASS'
 if((Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash -ne $before){
   throw 'Real Audit UIA test modified synthetic MP3'
 }
