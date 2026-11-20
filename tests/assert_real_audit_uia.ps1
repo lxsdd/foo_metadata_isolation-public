@@ -69,6 +69,11 @@ public static class MetadataIsolationWindowLocator {
     if (!PostMessage(window,0x0111,new IntPtr((1 << 16) | 1202),combo))
       throw new InvalidOperationException("Failed posting native Audit filter changed notification");
   }
+  public static bool PhysicalEditEnabled(IntPtr window) {
+    IntPtr button=GetDlgItem(window,1206);
+    if(button==IntPtr.Zero) throw new InvalidOperationException("Physical Properties control missing");
+    return IsWindowEnabled(button);
+  }
   public static void Rescan(IntPtr window) {
     IntPtr button=GetDlgItem(window,1204);
     if (button==IntPtr.Zero || !IsWindowEnabled(button))
@@ -483,6 +488,10 @@ if(([MetadataIsolationWindowLocator]::Status($window)).StartsWith('Scanning phys
   $duringStatus=[MetadataIsolationWindowLocator]::Status($window)
   if($duringStatus.StartsWith('Scanning physical metadata') -and $duringRows -ne 0){
     throw 'Native rescan retained stale physical results while scan is active'
+  }
+  if($duringStatus.StartsWith('Scanning physical metadata') -and
+     [MetadataIsolationWindowLocator]::PhysicalEditEnabled($window)) {
+    throw 'Physical Properties remained enabled while replacing audit results'
   }
   if($duringStatus.StartsWith('Scanning physical metadata')){
     $duringDetail=[MetadataIsolationAuditDetailAccessibility]::GetNativeAccessibleValue($detailHwnd)

@@ -66,3 +66,12 @@ Integration checklist: existing empty/nonempty scan invalidation retained;
 enumeration failure cleanup integrated on this Draft; immutable Studio/Discogger
 pins unchanged; original-host exception injection and full UIA row provider
 not yet accepted.
+
+## Pending scope invalidation (20 November 2026)
+
+A new scope requested during an active read-only scan now invalidates prior
+physical target rows and native selection immediately, before cancellation
+finishes. The existing pending-scope completion path still launches the new
+scan. The source safety contract asserts this ordering, while original-host
+UIA checks require Physical Properties to remain disabled during an observed
+replacement scan. No writer or productive media access is added.

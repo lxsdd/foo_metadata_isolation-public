@@ -152,3 +152,10 @@ assert ENUMERATION_FAILURE.index("refresh_list(false);") < ENUMERATION_FAILURE.i
 assert "EnableWindow(GetDlgItem(m_window, IDC_AUDIT_RESCAN), TRUE);" in ENUMERATION_FAILURE
 assert "EnableWindow(GetDlgItem(m_window, IDC_AUDIT_CANCEL), FALSE);" in ENUMERATION_FAILURE
 assert "update_edit_enabled();" in UI.split("void refresh_list(bool preserve_selection)", 1)[1]
+
+# A scope change during an active scan invalidates physical targets before
+# asynchronous cancellation can complete.
+PENDING_SWITCH = UI.split("void request_scope(audit_scope scope,", 1)[1].split("void on_start_scan()", 1)[0].split("if (m_scan) {", 1)[1].split("return;", 1)[0]
+assert PENDING_SWITCH.index("m_pending_scan = true;") < PENDING_SWITCH.index("m_rows.clear();")
+assert PENDING_SWITCH.index("m_rows.clear();") < PENDING_SWITCH.index("refresh_list(false);")
+assert PENDING_SWITCH.index("refresh_list(false);") < PENDING_SWITCH.index("cancel_scan();")

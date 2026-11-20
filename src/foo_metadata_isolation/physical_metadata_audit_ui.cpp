@@ -357,6 +357,10 @@ public:
             m_pending_scope = scope;
             m_pending_seed = seed;
             m_pending_scan = true;
+            // A pending scope supersedes the previous physical targets now,
+            // even if the old read-only worker takes time to cancel.
+            m_rows.clear();
+            refresh_list(false);
             cancel_scan();
             set_text(
                 m_window,
