@@ -526,9 +526,12 @@ $failedDetail=[MetadataIsolationAuditDetailAccessibility]::GetNativeAccessibleVa
 if($failedDetail -cne 'No result selected.'){
   throw 'Library enumeration failure retained stale accessible selected-result value'
 }
-$failedMsaa=[IsolatedAuditMsaa]::ChildCount($ownedList)
-if($failedMsaa[0] -ne 0 -or $failedMsaa[1] -ne 0){
-  throw 'Library enumeration failure retained stale native MSAA rows'
+# The native ListView exposes non-row MSAA children (header and scrollbars)
+# even with zero items. Assert row roles, not total accessible child count.
+$failedMsaa=[IsolatedAuditMsaa]::ChildRoleSummary($ownedList)
+if($failedMsaa[0] -ne 0 -or $failedMsaa[2] -ne 0 -or
+   $failedMsaa[3] -ne 0 -or $failedMsaa[4] -ne 0){
+  throw 'Library enumeration failure retained stale native MSAA result rows'
 }
 Write-Host 'PRODUCTION_AUDIT_LIBRARY_EXCEPTION_TARGET_INVALIDATION=PASS'
 Open-Audit $context
