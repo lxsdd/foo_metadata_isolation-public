@@ -377,6 +377,15 @@ public:
             try {
                 library_manager::get()->get_all_items(state->source_items);
             } catch (const std::exception& error) {
+                // The requested library scope has already replaced the prior
+                // selection. Never leave its old physical targets actionable
+                // when enumeration fails before the normal scan reset.
+                m_rows.clear();
+                refresh_list(false);
+                EnableWindow(GetDlgItem(m_window, IDC_AUDIT_RESCAN), TRUE);
+                EnableWindow(GetDlgItem(m_window, IDC_AUDIT_CANCEL), FALSE);
+                set_text(m_window, IDC_AUDIT_STATUS,
+                    "Media Library enumeration failed; no audit results are available.");
                 show_error("The Media Library could not be enumerated.", error.what());
                 return;
             }

@@ -50,3 +50,19 @@ foobar host regression checks the live rescan transition when the scanning
 state is observable and requires the existing completed synthetic classification.
 The static safety contract also asserts the pre-worker ordering. This does not
 claim full UIA row-provider exposure, Preset/Rollback acceptance, or media writes.
+
+## Library-enumeration failure invalidation (20 November 2026)
+
+The original audit scan previously returned from the Media Library enumeration
+exception handler before invalidating rows from the prior selection/scope.
+The native error path now clears the physical-target model, refreshes the
+ListView and accessible detail, disables the stale Properties eligibility
+through the existing selection gate, and restores Rescan/Cancel availability.
+A source regression checks the exception-path ordering. Original-host
+fault-injection for failed enumeration and the complete selection/recovery
+sequence remain separate acceptance work; no production metadata is written.
+
+Integration checklist: existing empty/nonempty scan invalidation retained;
+enumeration failure cleanup integrated on this Draft; immutable Studio/Discogger
+pins unchanged; original-host exception injection and full UIA row provider
+not yet accepted.

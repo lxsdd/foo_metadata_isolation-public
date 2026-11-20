@@ -142,3 +142,13 @@ assert "if (m_scan) return;" in UI.split("void edit_selected_physical()", 1)[1]
 NONEMPTY_START = UI.split('void on_start_scan() {', 1)[1].split('state->logger.standard(', 1)[0]
 assert NONEMPTY_START.index('m_rows.clear();', NONEMPTY_START.index('if (state->source_items.get_count() == 0)')) < NONEMPTY_START.index('m_scan = state;')
 assert NONEMPTY_START.index('refresh_list(false);', NONEMPTY_START.index('if (state->source_items.get_count() == 0)')) < NONEMPTY_START.index('m_scan = state;')
+
+# A failed library enumeration is a scope transition, not permission to keep
+# the old physical target selected or enabled for Properties.
+SCAN_ENTRY = UI.split("void on_start_scan() {", 1)[1].split("if (state->source_items.get_count() == 0)", 1)[0]
+ENUMERATION_FAILURE = SCAN_ENTRY.split("catch (const std::exception& error) {", 1)[1].split("return;", 1)[0]
+assert ENUMERATION_FAILURE.index("m_rows.clear();") < ENUMERATION_FAILURE.index("refresh_list(false);")
+assert ENUMERATION_FAILURE.index("refresh_list(false);") < ENUMERATION_FAILURE.index('show_error("The Media Library could not be enumerated."')
+assert "EnableWindow(GetDlgItem(m_window, IDC_AUDIT_RESCAN), TRUE);" in ENUMERATION_FAILURE
+assert "EnableWindow(GetDlgItem(m_window, IDC_AUDIT_CANCEL), FALSE);" in ENUMERATION_FAILURE
+assert "update_edit_enabled();" in UI.split("void refresh_list(bool preserve_selection)", 1)[1]
