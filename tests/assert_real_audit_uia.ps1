@@ -316,7 +316,19 @@ if($detailElement.TryGetCurrentPattern(
   if(-not $value.Current.IsReadOnly) {
     throw 'Native Audit selected result UIA ValuePattern is unexpectedly writable'
   }
-  Write-Host 'PRODUCTION_AUDIT_SELECTED_RESULT_UIA_VALUE_PATTERN=AVAILABLE'
+  # Compare the provider's actual value against the independent native
+  # selection text. Merely exposing a read-only pattern is insufficient.
+  $uiSelectedValue=$value.Current.Value
+  $nativeSelected=[System.Text.StringBuilder]::new(1024)
+  [void][MetadataIsolationWindowLocator]::GetWindowTextW(
+      $detailHwnd,$nativeSelected,$nativeSelected.Capacity)
+  if($uiSelectedValue -cne $nativeSelected.ToString() -or
+     $uiSelectedValue.IndexOf('INCOMPLETE',[StringComparison]::OrdinalIgnoreCase) -lt 0 -or
+     $uiSelectedValue.IndexOf('track-01.mp3',[StringComparison]::OrdinalIgnoreCase) -lt 0 -or
+     $uiSelectedValue.IndexOf('DATE',[StringComparison]::OrdinalIgnoreCase) -lt 0){
+    throw 'Actual UIA ValuePattern does not match the selected synthetic result'
+  }
+  Write-Host 'PRODUCTION_AUDIT_SELECTED_RESULT_UIA_VALUE_PATTERN=PASS'
 }else{
   Write-Host 'PRODUCTION_AUDIT_SELECTED_RESULT_UIA_VALUE_PATTERN=PENDING_PROVIDER_UNEXPOSED'
 }
@@ -452,6 +464,21 @@ foreach($entry in @(
     if(-not $clear){
       throw "Audit $($entry.Name) filter leaked a stale selected-result accessible value"
     }
+    # The same hidden result must also disappear from the independent UIA
+    # provider when it exposes ValuePattern. Do not turn an absent provider
+    # into a fabricated PASS.
+    if($null -ne $valuePattern){
+      $uiClear=$false
+      for($uiRetry=0;$uiRetry -lt 40;$uiRetry++){
+        $uiValue=([System.Windows.Automation.ValuePattern]$valuePattern).Current.Value
+        if($uiValue -ceq 'No result selected.'){$uiClear=$true;break}
+        Start-Sleep -Milliseconds 50
+      }
+      if(-not $uiClear){
+        throw "Audit $($entry.Name) filter leaked a stale UIA ValuePattern result"
+      }
+      Write-Host ('PRODUCTION_AUDIT_HIDDEN_RESULT_UIA_CLEAR_'+$entry.Name.ToUpperInvariant()+'=PASS')
+    }
     Write-Host ('PRODUCTION_AUDIT_HIDDEN_RESULT_MSAA_CLEAR_'+$entry.Name.ToUpperInvariant()+'=PASS')
   }
   Write-Host ('AUDIT_NATIVE_FILTER_'+$entry.Name.ToUpperInvariant()+'=PASS')
@@ -480,6 +507,10 @@ for($retry=0;$retry -lt 40;$retry++){
   Start-Sleep -Milliseconds 50
 }
 if(-not $cleared){throw 'Audit accessible value resurrected hidden result'}
+if($null -ne $valuePattern -and
+   ([System.Windows.Automation.ValuePattern]$valuePattern).Current.Value -cne 'No result selected.'){
+  throw 'Audit UIA ValuePattern resurrected the hidden result'
+}
 Write-Host 'PRODUCTION_AUDIT_HIDDEN_SELECTION_NOT_RESURRECTED=PASS'
 # BM_CLICK is a real native button event, not a direct test callback.
 [MetadataIsolationWindowLocator]::Rescan($window)
