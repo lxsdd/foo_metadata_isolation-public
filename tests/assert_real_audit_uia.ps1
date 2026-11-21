@@ -159,8 +159,16 @@ function Assert-CompletedAudit {
     }
     Start-Sleep -Milliseconds 100
   }
+  # Report the bounded actual native state, rather than hiding all failures
+  # behind UNEXPECTED; this identifies a missing context selection on CI.
+  $statusClass=if($status.StartsWith('Scanning')){'SCANNING'}else{'UNEXPECTED'}
+  $safeStatus=($status -replace '[\r\n]', ' ')
+  if($safeStatus.Length -gt 240){$safeStatus=$safeStatus.Substring(0,240)}
   throw ('Actual read-only audit did not complete with expected classification; status class=' +
-    $(if($status.StartsWith('Scanning')){'SCANNING'}else{'UNEXPECTED'}))
+    $statusClass + '; status=' + $safeStatus +
+    '; rows=' + [MetadataIsolationWindowLocator]::ItemCount($Dialog) +
+    '; filter=' + [MetadataIsolationWindowLocator]::CurrentFilter($Dialog) +
+    '; physical_edit_enabled=' + [MetadataIsolationWindowLocator]::PhysicalEditEnabled($Dialog))
 }
 Assert-CompletedAudit $window
 Write-Host ('AUDIT_DEFAULT_FILTER_INDEX='+[MetadataIsolationWindowLocator]::CurrentFilter($window))
@@ -536,6 +544,12 @@ if($failedMsaa[0] -ne 0 -or $failedMsaa[2] -ne 0 -or
 Write-Host 'PRODUCTION_AUDIT_LIBRARY_EXCEPTION_TARGET_INVALIDATION=PASS'
 Open-Audit $context
 if((Find-Audit) -ne $window){throw 'Library failure recovery replaced the audit window'}
+# Successful launcher exit alone does not establish a bound fixture selection.
+$recoveryStatus=[MetadataIsolationWindowLocator]::Status($window)
+$safeRecoveryStatus=($recoveryStatus -replace '[\r\n]', ' ')
+if($safeRecoveryStatus.Length -gt 240){$safeRecoveryStatus=$safeRecoveryStatus.Substring(0,240)}
+Write-Host ('PRODUCTION_AUDIT_RECOVERY_CONTEXT_STATUS=' + $safeRecoveryStatus)
+Write-Host ('PRODUCTION_AUDIT_RECOVERY_CONTEXT_ROWS=' + [MetadataIsolationWindowLocator]::ItemCount($window))
 Assert-CompletedAudit $window
 if([MetadataIsolationWindowLocator]::ItemCount($window) -ne 1){
   throw 'Audit selection did not recover after library enumeration failure'

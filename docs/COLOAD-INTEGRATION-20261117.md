@@ -75,3 +75,7 @@ finishes. The existing pending-scope completion path still launches the new
 scan. The source safety contract asserts this ordering, while original-host
 UIA checks require Physical Properties to remain disabled during an observed
 replacement scan. No writer or productive media access is added.
+
+## Original-host recovery diagnosis (21 November 2026)
+
+The failed-enumeration original-host test now reports the bounded actual status, row count, filter and physical Edit eligibility when the subsequent selection context command fails to restore the expected synthetic result. It also records the immediate status after the second command. This distinguishes an empty or unbound selection from a different completion state without weakening the existing exact classification, MSAA row and media-byte assertions. This is diagnostic regression coverage, **not** a recovered scan or qualified product fix. The next exact-SHA host CI must determine the recovery cause; production scope behavior remains unchanged until that evidence exists.
