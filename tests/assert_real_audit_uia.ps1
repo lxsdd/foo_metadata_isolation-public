@@ -4,6 +4,7 @@ param(
   [Parameter(Mandatory)][string]$Executable,
   [Parameter(Mandatory)][string]$Workdir,
   [Parameter(Mandatory)][string]$FixturePath,
+  [Parameter(Mandatory)][scriptblock]$InvokeSelectionProbe,
   [Parameter(Mandatory)][string]$AdapterPath
 )
 Set-StrictMode -Version Latest
@@ -542,7 +543,13 @@ if($failedMsaa[0] -ne 0 -or $failedMsaa[2] -ne 0 -or
   throw 'Library enumeration failure retained stale native MSAA result rows'
 }
 Write-Host 'PRODUCTION_AUDIT_LIBRARY_EXCEPTION_TARGET_INVALIDATION=PASS'
-Open-Audit $context
+# Bind this request to real SDK handles for the disposable physical fixture.
+$selectionReport = & $InvokeSelectionProbe
+if ([IO.Path]::GetFullPath($selectionReport) -ne "$fixture.metadata-isolation-probe.txt" -or
+    -not (Select-String -LiteralPath $selectionReport -Pattern '^audit_selection_dispatched=true$' -Quiet)) {
+  throw 'Original host did not dispatch the audit command for the synthetic selection'
+}
+Remove-Item -LiteralPath $selectionReport
 if((Find-Audit) -ne $window){throw 'Library failure recovery replaced the audit window'}
 # Successful launcher exit alone does not establish a bound fixture selection.
 $recoveryStatus=[MetadataIsolationWindowLocator]::Status($window)

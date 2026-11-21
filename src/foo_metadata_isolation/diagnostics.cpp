@@ -163,6 +163,7 @@ enum class probe_mode {
     physical_audit_classifier,
     logging_contract,
     audit_internal_ui_state,
+    audit_selection_context,
     logging_outcomes,
     logging_standard,
     logging_verbose,
@@ -344,6 +345,7 @@ bool parse_probe_mode(const char* token, probe_mode& mode) {
         { "/metadata-isolation-probe-projection-benchmark-inventory", probe_mode::projection_benchmark_inventory },
         { "/metadata-isolation-probe-physical-audit-classifier", probe_mode::physical_audit_classifier },
         { "/metadata-isolation-probe-logging-contract", probe_mode::logging_contract },
+        { "/metadata-isolation-probe-audit-selection", probe_mode::audit_selection_context },
         { "/metadata-isolation-probe-audit-internal-ui-state", probe_mode::audit_internal_ui_state },
         { "/metadata-isolation-probe-logging-outcomes", probe_mode::logging_outcomes },
         { "/metadata-isolation-probe-logging-standard", probe_mode::logging_standard },
@@ -1467,6 +1469,15 @@ public:
                     report << "structured_log=" << line.c_str() << "\n";
                 }
                 report << "write_result=logging_outcomes_complete\n";
+            } else if (m_mode == probe_mode::audit_selection_context) {
+                for (const auto& item : m_items) {
+                    if (metadb::path_compare(path, item->get_path()) != 0)
+                        throw pfc::exception("Audit probe expected one physical fixture");
+                }
+                const bool started = menu_helpers::run_command_context_ex(
+                    guids::audit_context_command, pfc::guid_null, m_items,
+                    contextmenu_item::caller_undefined);
+                report << "audit_selection_dispatched=" << (started ? "true" : "false") << "\n";
             } else if (m_mode == probe_mode::audit_internal_ui_state) {
                 read_audit_internal_state_for_test(report);
                 report << "write_result=audit_internal_state_readonly\n";

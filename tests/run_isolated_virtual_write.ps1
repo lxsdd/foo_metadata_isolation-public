@@ -710,7 +710,7 @@ try {
         & python tests/make_isolated_embedded_mp3.py $source
         if ($LASTEXITCODE -ne 0) { throw 'Real Audit UI fixture generation failed' }
         $adapter = Join-Path (Get-Location).Path '.ci_shared/scripts/windows-ui-accessibility.ps1'
-        & ./tests/assert_real_audit_uia.ps1 -FoobarPid $process.Id -Executable $exe -Workdir $portable -FixturePath $source -AdapterPath $adapter
+        & ./tests/assert_real_audit_uia.ps1 -FoobarPid $process.Id -Executable $exe -Workdir $portable -FixturePath $source -AdapterPath $adapter -InvokeSelectionProbe { Invoke-IsolatedProbe '/metadata-isolation-probe-audit-selection' }
         $columnReport = Invoke-IsolatedProbe '/metadata-isolation-probe-audit-internal-ui-state'
         Get-Content -LiteralPath $columnReport | Select-String -Pattern '^audit_column_restore' | ForEach-Object { Write-Host $_ }
         if (-not (Select-String -LiteralPath $columnReport -Pattern '^audit_column_restore_pass=true$' -Quiet)) {
