@@ -96,12 +96,13 @@ void preferences_page_instance_impl::refresh_protection_status() {
     } else {
         switch (get_protection_status()) {
         case protection_status::active:
-            text = L"Protection status: Active";
+            text = L"Protection evidence: unsafe virtual write blocked";
+            detail = L"A direct unsafe virtual write was blocked in this session. Check Track Info Filters for current activation.";
             break;
         case protection_status::unknown:
-            text = L"Protection setting: Active; filter callback not yet observed";
+            text = L"Protection enabled; no unsafe block observed";
             detail =
-                L"Enable Metadata Isolation under Preferences > Track Info Filters to activate protection.";
+                L"No unsafe write has been blocked yet. This is not proof of a fault; check Preferences > Track Info Filters.";
             break;
         case protection_status::inactive:
             // The dialog's pending state is authoritative while the user edits it.

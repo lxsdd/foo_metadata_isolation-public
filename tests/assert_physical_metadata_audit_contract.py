@@ -76,6 +76,21 @@ assert "cfg_string g_cfg_audit_columns" in UI
 assert "WM_DPICHANGED" in UI
 assert "m_dark.AddDialogWithControls" in UI
 assert "physical_audit_tooltip_definitions" in UI
+# Native ListView rows may be unavailable through hosted UIA. Accessible
+# fallback is a production read-only EDIT mirroring the actual selected row.
+assert "IDC_AUDIT_ACCESSIBLE_DETAIL" in RESOURCE
+assert "ES_READONLY | ES_AUTOHSCROLL | WS_TABSTOP" in RESOURCE
+assert "update_accessible_result_detail()" in UI
+assert "EVENT_OBJECT_VALUECHANGE" in UI
+assert "PRODUCTION_AUDIT_SELECTED_RESULT_READONLY_MSAA_VALUE=PASS" in (
+    ROOT / "tests/assert_real_audit_uia.ps1").read_text(encoding="utf-8")
+# A real zero-row filter may not leave previously selected track metadata in
+# the accessible detail value. Require an independent native+MSAA host oracle.
+AUDIT_UIA = (ROOT / "tests/assert_real_audit_uia.ps1").read_text(encoding="utf-8")
+assert "PRODUCTION_AUDIT_HIDDEN_RESULT_MSAA_CLEAR_" in AUDIT_UIA
+assert "GetNativeAccessibleValue($detailHwnd)" in AUDIT_UIA
+assert "0x1032" in AUDIT_UIA
+assert "$detailValue -ceq 'No result selected.'" in AUDIT_UIA
 
 # The only writer-capable transition is an explicit user action to existing
 # Physical Properties; the scan/analysis path itself remains read-only.
@@ -103,3 +118,46 @@ for standard in (
     assert standard in AGENTS
 
 print("Physical Metadata Audit static safety/UI contract: PASS")
+
+# Persisted column settings are untrusted. Parsing must consume complete
+# numeric tokens and validate visibility + permutation before mutating UI.
+assert "std::stoi(part, &consumed)" in UI
+assert "consumed != part.size()" in UI
+assert "std::stoul(mask_text, &consumed, 10)" in UI
+assert "consumed == mask_text.size()" in UI
+assert "parsed_mask >> column_count" in UI
+assert "valid_order" in UI
+assert "order = parsed_order" in UI
+
+# Empty scope must invalidate old physical targets before returning, rather
+# than leaving the previous selection available to the Properties command.
+EMPTY_SCOPE = UI.split("if (state->source_items.get_count() == 0) {", 1)[1].split("\n        m_scan = state;", 1)[0]
+assert EMPTY_SCOPE.index("m_rows.clear();") < EMPTY_SCOPE.index("refresh_list(false);")
+assert EMPTY_SCOPE.index("refresh_list(false);") < EMPTY_SCOPE.index("return;")
+assert "update_edit_enabled();" in UI.split("void refresh_list(bool preserve_selection)", 1)[1]
+assert "if (m_scan) return;" in UI.split("void edit_selected_physical()", 1)[1]
+
+# A nonempty replacement scan must also hide previous physical targets and
+# accessible detail before the worker is started, not just disable Properties.
+NONEMPTY_START = UI.split('void on_start_scan() {', 1)[1].split('state->logger.standard(', 1)[0]
+assert NONEMPTY_START.index('m_rows.clear();', NONEMPTY_START.index('if (state->source_items.get_count() == 0)')) < NONEMPTY_START.index('m_scan = state;')
+assert NONEMPTY_START.index('refresh_list(false);', NONEMPTY_START.index('if (state->source_items.get_count() == 0)')) < NONEMPTY_START.index('m_scan = state;')
+
+# A failed library enumeration is a scope transition, not permission to keep
+# the old physical target selected or enabled for Properties.
+SCAN_ENTRY = UI.split("void on_start_scan() {", 1)[1].split("if (state->source_items.get_count() == 0)", 1)[0]
+# The CI-only probe has an early return before the normal show_error path.
+# Inspect the complete catch body up to the next scope branch.
+ENUMERATION_FAILURE = SCAN_ENTRY.split("catch (const std::exception& error) {", 1)[1].split("\n        } else {", 1)[0]
+assert ENUMERATION_FAILURE.index("m_rows.clear();") < ENUMERATION_FAILURE.index("refresh_list(false);")
+assert ENUMERATION_FAILURE.index("refresh_list(false);") < ENUMERATION_FAILURE.index('show_error("The Media Library could not be enumerated."')
+assert "EnableWindow(GetDlgItem(m_window, IDC_AUDIT_RESCAN), TRUE);" in ENUMERATION_FAILURE
+assert "EnableWindow(GetDlgItem(m_window, IDC_AUDIT_CANCEL), FALSE);" in ENUMERATION_FAILURE
+assert "update_edit_enabled();" in UI.split("void refresh_list(bool preserve_selection)", 1)[1]
+
+# A scope change during an active scan invalidates physical targets before
+# asynchronous cancellation can complete.
+PENDING_SWITCH = UI.split("void request_scope(audit_scope scope,", 1)[1].split("void on_start_scan()", 1)[0].split("if (m_scan) {", 1)[1].split("return;", 1)[0]
+assert PENDING_SWITCH.index("m_pending_scan = true;") < PENDING_SWITCH.index("m_rows.clear();")
+assert PENDING_SWITCH.index("m_rows.clear();") < PENDING_SWITCH.index("refresh_list(false);")
+assert PENDING_SWITCH.index("refresh_list(false);") < PENDING_SWITCH.index("cancel_scan();")

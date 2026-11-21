@@ -1,0 +1,73 @@
+name: Realistic 111-track full-length synthetic Mix E2E
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/full-length-111-mix-e2e.yml'
+      - 'tests/make_full_length_111_mix.py'
+      - 'tests/assert_full_length_111_mix.py'
+      - 'tests/run_isolated_virtual_write.ps1'
+      - 'src/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mi-full-111-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-length-111:
+    runs-on: windows-latest
+    timeout-minutes: 23
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: Win32
+            dll: build/foo_metadata_isolation.dll
+          - architecture: x64
+            dll: build/x64/foo_metadata_isolation.dll
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Exact owner SDK 2026-10-01
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/foobar2000_component_template
+          ref: 31a35947a7527826c2199491692802e3ce3d8bd7
+          path: external/sdk-template
+          persist-credentials: false
+      - name: Existing immutable official foobar installer verification source
+        uses: actions/checkout@v7
+        with:
+          repository: lxsdd/dev-infrastructure-public
+          ref: 35369054c56f4c6ccb2f802944e9675852fd35ec
+          path: .ci_installer
+          persist-credentials: false
+      - uses: microsoft/setup-msbuild@v2
+      - name: Stage exact SDK and compile disposable Win32/x64 real-host component
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python tests/verify_source_release_provenance.py
+          if($LASTEXITCODE -ne 0){throw 'Source provenance failed'}
+          python scripts/verify-public-artifact-hold.py
+          if($LASTEXITCODE -ne 0){throw 'Public artifact hold failed'}
+          ./ci/test-latest-sdk.ps1
+          $wtl=Join-Path (Get-Location) 'wtl/Include'
+          if(-not (Test-Path -LiteralPath (Join-Path $wtl 'atlapp.h') -PathType Leaf)){throw 'WTL unavailable'}
+          $env:CL='/I"' + $wtl + '" ' + $env:CL
+          ./validate_project.ps1
+          & msbuild component.sln /t:Build /p:Configuration=Release /p:Platform=${{ matrix.architecture }} /p:EnableTestProbes=true /p:PlatformToolset=v145 /p:LanguageStandard=stdcpp23 /m:2 /verbosity:minimal
+          if($LASTEXITCODE -ne 0){throw 'Full 111 Mix host component compilation failed'}
+      - name: Run actual foobar with 84 minute/193 MiB copyright-free Mix, 111 Cue tracks
+        shell: pwsh
+        run: |
+          ./tests/run_isolated_virtual_write.ps1 -Architecture '${{ matrix.architecture }}' -ComponentDll '${{ matrix.dll }}' -RunFullLength111Mix
+          Write-Host 'REAL_HOST_FULL_LENGTH_111_MIX_${{ matrix.architecture }}=PASS'
+      # The synthetic ~193 MiB MP3 and probe-enabled DLL are always runner-local:
+      # NO actions/upload-artifact, caches, release assets, other downloads, or sharing.
