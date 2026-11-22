@@ -239,14 +239,14 @@ try {
         Write-Host "MMS_DISCOGGER_METADATA_ISOLATION_TRI_COLOAD_$Architecture=PASS"
     }
 
-    function Invoke-IsolatedProbe([string]$token, [string]$probeSource = $source) {
+    function Invoke-IsolatedProbe([string]$token) {
         $inventoryBaseline = $null
         if ($token -ceq '/metadata-isolation-probe-embedded-cue-inventory') {
             $inventoryBaseline = Get-ReadonlyInventoryFingerprint $source
         }
-        $report = "$probeSource.metadata-isolation-probe.txt"
+        $report = "$source.metadata-isolation-probe.txt"
         if (Test-Path -LiteralPath $report) { throw "Refusing stale report: $token" }
-        $launcher = Start-Process -FilePath $exe -WorkingDirectory $portable -ArgumentList @($token,('"' + $probeSource + '"')) -PassThru
+        $launcher = Start-Process -FilePath $exe -WorkingDirectory $portable -ArgumentList @($token,('"' + $source + '"')) -PassThru
         if (-not $launcher.WaitForExit(20000)) { throw "Probe launcher timeout: $token" }
         if ($launcher.ExitCode -ne 0) { throw "Probe launcher failed: $token" }
         $last = -1L
@@ -710,7 +710,7 @@ try {
         & python tests/make_isolated_embedded_mp3.py $source
         if ($LASTEXITCODE -ne 0) { throw 'Real Audit UI fixture generation failed' }
         $adapter = Join-Path (Get-Location).Path '.ci_shared/scripts/windows-ui-accessibility.ps1'
-        & ./tests/assert_real_audit_uia.ps1 -FoobarPid $process.Id -Executable $exe -Workdir $portable -FixturePath $source -AdapterPath $adapter -InvokeSelectionProbe { param($selectedPath) Invoke-IsolatedProbe '/metadata-isolation-probe-audit-selection' $selectedPath }
+        & ./tests/assert_real_audit_uia.ps1 -FoobarPid $process.Id -Executable $exe -Workdir $portable -FixturePath $source -AdapterPath $adapter -InvokeSelectionProbe { param($source) Invoke-IsolatedProbe '/metadata-isolation-probe-audit-selection' }
         $columnReport = Invoke-IsolatedProbe '/metadata-isolation-probe-audit-internal-ui-state'
         Get-Content -LiteralPath $columnReport | Select-String -Pattern '^audit_column_restore' | ForEach-Object { Write-Host $_ }
         if (-not (Select-String -LiteralPath $columnReport -Pattern '^audit_column_restore_pass=true$' -Quiet)) {
