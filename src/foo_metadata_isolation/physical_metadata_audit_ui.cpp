@@ -426,8 +426,8 @@ public:
         EnableWindow(GetDlgItem(window, IDC_AUDIT_CANCEL), FALSE);
         EnableWindow(GetDlgItem(window, IDC_AUDIT_EDIT_PHYSICAL), FALSE);
         ShowWindow(m_progress, SW_HIDE);
-        if (m_detail_provider) m_detail_provider->set_value(static_cast<const wchar_t*>(wide));
         SetWindowTextW(m_accessible_detail, L"No result selected.");
+        if (m_detail_provider) m_detail_provider->set_value(L"No result selected.");
         set_text(
             window,
             IDC_AUDIT_STATUS,
