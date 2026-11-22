@@ -575,7 +575,7 @@ if($failedMsaa[0] -ne 0 -or $failedMsaa[2] -ne 0 -or
 }
 Write-Host 'PRODUCTION_AUDIT_LIBRARY_EXCEPTION_TARGET_INVALIDATION=PASS'
 # Bind this request to real SDK handles for the disposable physical fixture.
-$selectionReport = & $InvokeSelectionProbe
+$selectionReport = & $InvokeSelectionProbe $fixture
 if ([IO.Path]::GetFullPath($selectionReport) -ne "$fixture.metadata-isolation-probe.txt" -or
     -not (Select-String -LiteralPath $selectionReport -Pattern '^audit_selection_dispatched=true$' -Quiet)) {
   throw 'Original host did not dispatch the audit command for the synthetic selection'
@@ -598,6 +598,39 @@ if($recoveredMsaa[0] -ne 0 -or $recoveredMsaa[2] -ne 1 -or
   throw 'Native MSAA result row did not recover after library enumeration failure'
 }
 Write-Host 'PRODUCTION_AUDIT_LIBRARY_EXCEPTION_RECOVERY_MSAA=PASS'
+$second = Join-Path ([IO.Path]::GetDirectoryName($fixture)) 'track-02.mp3'
+[IO.File]::Copy($fixture, $second, $false)
+foreach ($candidate in @($second, $fixture)) {
+  $report = & $InvokeSelectionProbe $candidate
+  if ([IO.Path]::GetFullPath($report) -ne "$candidate.metadata-isolation-probe.txt" -or
+      -not (Select-String -LiteralPath $report -Pattern '^audit_selection_dispatched=true$' -Quiet)) {
+    throw 'Second-selection audit was not dispatched to the original host'
+  }
+  Remove-Item -LiteralPath $report
+  if ((Find-Audit) -ne $window) { throw 'Selection switch replaced the original audit window' }
+  Assert-CompletedAudit $window
+  & ./tests/assert_real_audit_keyboard_msaa.ps1 -FoobarPid $FoobarPid -AuditHwnd $window -ListHwnd $ownedList
+  [void][MetadataIsolationWindowLocator]::SendMessage($window,0x0028,$detailHwnd,[IntPtr]::new(1))
+  $text = [System.Text.StringBuilder]::new(4096)
+  [void][MetadataIsolationWindowLocator]::GetWindowTextW($detailHwnd,$text,$text.Capacity)
+  $actual = $text.ToString()
+  $expectedLeaf = [IO.Path]::GetFileName($candidate)
+  $otherLeaf = if ($candidate -eq $fixture) { 'track-02.mp3' } else { 'track-01.mp3' }
+  if (-not $actual.Contains($expectedLeaf) -or $actual.Contains($otherLeaf) -or
+      [MetadataIsolationAuditDetailAccessibility]::GetNativeAccessibleValue($detailHwnd) -cne $actual) {
+    throw "Stale native or MSAA selected value for $expectedLeaf"
+  }
+  $pattern = $null
+  if ($detailElement.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$pattern)) {
+    if (-not $pattern.Current.IsReadOnly -or $pattern.Current.Value -cne $actual) {
+      throw "Stale UI Automation selected value for $expectedLeaf"
+    }
+  }
+}
+if ((Get-FileHash -LiteralPath $second -Algorithm SHA256).Hash -ne $before) {
+  throw 'Selection switch modified second disposable fixture'
+}
+Write-Host 'PRODUCTION_AUDIT_TWO_FILE_SELECTION_ROUNDTRIP_MSAA=PASS'
 if((Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash -ne $before){
   throw 'Real Audit UIA test modified synthetic MP3'
 }
