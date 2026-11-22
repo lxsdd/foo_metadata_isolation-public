@@ -8,6 +8,12 @@
 #include "ui_scaling.h"
 #include "ui_tooltips.h"
 
+#include <UIAutomation.h>
+#include <wrl/implements.h>
+#include <wrl/client.h>
+#pragma comment(lib, "Uiautomationcore.lib")
+#pragma comment(lib, "OleAut32.lib")
+
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
@@ -20,6 +26,79 @@
 
 namespace metadata_isolation {
 namespace {
+
+// Keep the standard Edit/MSAA implementation. Expose its selected value
+// explicitly for UIA clients when the host supplies only a generic Pane.
+class AuditDetailProvider final : public Microsoft::WRL::RuntimeClass<
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+    IRawElementProviderSimple, IValueProvider> {
+public:
+    explicit AuditDetailProvider(HWND window) : window_(window) {}
+
+    void detach() noexcept { window_ = nullptr; }
+    void set_value(const wchar_t* value) { value_ = value; }
+
+    IFACEMETHODIMP get_ProviderOptions(ProviderOptions* options) override {
+        if (!options) return E_POINTER;
+        *options = static_cast<ProviderOptions>(ProviderOptions_ServerSideProvider |
+            ProviderOptions_UseComThreading);
+        return S_OK;
+    }
+    IFACEMETHODIMP GetPatternProvider(PATTERNID pattern, IUnknown** result) override {
+        if (!result) return E_POINTER;
+        *result = nullptr;
+        if (!window_) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (pattern == UIA_ValuePatternId)
+            return QueryInterface(__uuidof(IValueProvider), reinterpret_cast<void**>(result));
+        return S_OK;
+    }
+    IFACEMETHODIMP GetPropertyValue(PROPERTYID property, VARIANT* result) override {
+        if (!result) return E_POINTER;
+        VariantInit(result);
+        if (!window_) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (property == UIA_ControlTypePropertyId) {
+            result->vt = VT_I4;
+            result->lVal = UIA_EditControlTypeId;
+        }
+        return S_OK;
+    }
+    IFACEMETHODIMP get_HostRawElementProvider(IRawElementProviderSimple** result) override {
+        if (!result) return E_POINTER;
+        *result = nullptr;
+        return window_ ? UiaHostProviderFromHwnd(window_, result) : UIA_E_ELEMENTNOTAVAILABLE;
+    }
+    IFACEMETHODIMP SetValue(LPCWSTR) override { return E_ACCESSDENIED; }
+    IFACEMETHODIMP get_IsReadOnly(BOOL* result) override {
+        if (!result) return E_POINTER;
+        *result = TRUE;
+        return S_OK;
+    }
+    IFACEMETHODIMP get_Value(BSTR* result) override {
+        if (!result) return E_POINTER;
+        *result = nullptr;
+        if (!window_) return UIA_E_ELEMENTNOTAVAILABLE;
+        *result = SysAllocString(value_.c_str());
+        return *result ? S_OK : E_OUTOFMEMORY;
+    }
+
+private:
+    HWND window_;
+    std::wstring value_;
+};
+
+LRESULT CALLBACK detail_accessibility_proc(HWND hwnd, UINT message, WPARAM wp,
+        LPARAM lp, UINT_PTR id, DWORD_PTR context) {
+    auto* provider = reinterpret_cast<AuditDetailProvider*>(context);
+    if (message == WM_GETOBJECT && static_cast<LONG>(lp) == UiaRootObjectId)
+        return UiaReturnRawElementProvider(hwnd, wp, lp, provider);
+    if (message == WM_NCDESTROY) {
+        RemoveWindowSubclass(hwnd, detail_accessibility_proc, id);
+        provider->detach();
+        UiaDisconnectProvider(provider);
+        provider->Release();
+    }
+    return DefSubclassProc(hwnd, message, wp, lp);
+}
 
 constexpr UINT WM_AUDIT_START = WM_APP + 0x61;
 constexpr UINT WM_AUDIT_PROGRESS = WM_APP + 0x62;
@@ -314,6 +393,11 @@ public:
         m_list = GetDlgItem(window, IDC_AUDIT_RESULTS);
         m_progress = GetDlgItem(window, IDC_AUDIT_PROGRESS);
         m_accessible_detail = GetDlgItem(window, IDC_AUDIT_ACCESSIBLE_DETAIL);
+        m_detail_provider = Microsoft::WRL::Make<AuditDetailProvider>(m_accessible_detail);
+        if (m_detail_provider && SetWindowSubclass(m_accessible_detail,
+                detail_accessibility_proc, 1, reinterpret_cast<DWORD_PTR>(m_detail_provider.Get()))) {
+            m_detail_provider->AddRef(); // Released at child WM_NCDESTROY.
+        }
         m_dpi = ui::detect_window_dpi(window);
         if (m_dpi == 0) m_dpi = 96;
 
@@ -342,6 +426,7 @@ public:
         EnableWindow(GetDlgItem(window, IDC_AUDIT_CANCEL), FALSE);
         EnableWindow(GetDlgItem(window, IDC_AUDIT_EDIT_PHYSICAL), FALSE);
         ShowWindow(m_progress, SW_HIDE);
+        if (m_detail_provider) m_detail_provider->set_value(static_cast<const wchar_t*>(wide));
         SetWindowTextW(m_accessible_detail, L"No result selected.");
         set_text(
             window,
@@ -778,6 +863,7 @@ public:
             }
         }
         pfc::stringcvt::string_wide_from_utf8 wide(detail.c_str());
+        if (m_detail_provider) m_detail_provider->set_value(static_cast<const wchar_t*>(wide));
         SetWindowTextW(m_accessible_detail, static_cast<const wchar_t*>(wide));
         // This notifies MSAA listeners of a genuine Windows EDIT value change.
         // UIA/screenreader support is asserted independently in host tests.
@@ -1628,6 +1714,7 @@ private:
     HWND m_window = nullptr;
     HWND m_list = nullptr;
     HWND m_progress = nullptr;
+    Microsoft::WRL::ComPtr<AuditDetailProvider> m_detail_provider;
     HWND m_accessible_detail = nullptr;
     UINT m_dpi = 96;
     fb2k::CCoreDarkModeHooks m_dark;

@@ -302,13 +302,7 @@ if($null -eq $detailElement) {
 }
 $detailType=$detailElement.Current.ControlType.ProgrammaticName
 Write-Host ('PRODUCTION_AUDIT_DETAIL_UIA_CONTROL_TYPE='+$detailType)
-# Hosted UIA providers may classify a read-only EDIT as Text rather than
-# Edit. Require real UIA ValuePattern and verified read-only semantics below
-# instead of assuming one provider-specific ControlType.
-# This isolated foobar host exposes the native read-only EDIT as a UIA
-# Pane without ValuePattern, even in a genuine Windows desktop session.
-# Do not fabricate UIA PASS. Require a true oleacc/MSAA accessible *value*
-# from the exact visible EDIT HWND, and an independent Win32 read-only style.
+# Verify UIA and native MSAA independently on the real selected detail.
 $valuePattern=$null
 if($detailElement.TryGetCurrentPattern(
     [System.Windows.Automation.ValuePattern]::Pattern,[ref]$valuePattern)) {
@@ -330,7 +324,7 @@ if($detailElement.TryGetCurrentPattern(
   }
   Write-Host 'PRODUCTION_AUDIT_SELECTED_RESULT_UIA_VALUE_PATTERN=PASS'
 }else{
-  Write-Host 'PRODUCTION_AUDIT_SELECTED_RESULT_UIA_VALUE_PATTERN=PENDING_PROVIDER_UNEXPOSED'
+  throw 'The selected result must expose a read-only UI Automation ValuePattern'
 }
 
 Add-Type -TypeDefinition @'
@@ -625,7 +619,7 @@ foreach ($candidate in @($second, $fixture)) {
     if (-not $pattern.Current.IsReadOnly -or $pattern.Current.Value -cne $actual) {
       throw "Stale UI Automation selected value for $expectedLeaf"
     }
-  }
+  } else { throw "Missing UI Automation value for $expectedLeaf" }
 }
 if ((Get-FileHash -LiteralPath $second -Algorithm SHA256).Hash -ne $before) {
   throw 'Selection switch modified second disposable fixture'
