@@ -37,6 +37,21 @@ public static class MetadataIsolationWindowLocator {
   [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr window, int controlId);
   [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)]
   private static extern IntPtr SendMessageTimeout(IntPtr window,uint message,IntPtr wParam,IntPtr lParam,uint flags,uint timeout,out IntPtr result);
+  // GetWindowTextW cannot retrieve EDIT text from a different process.
+  // WM_GETTEXT is a system message: Windows marshals the output buffer across
+  // processes, so this is an independent native oracle for the UIA value.
+  [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", CharSet=CharSet.Unicode, SetLastError=true)]
+  private static extern IntPtr SendTextMessageTimeout(IntPtr window,uint message,IntPtr wParam,StringBuilder output,uint flags,uint timeout,out IntPtr result);
+  public static string ReadEditText(IntPtr window) {
+    if(window==IntPtr.Zero) throw new InvalidOperationException("Native Audit detail EDIT missing");
+    var output=new StringBuilder(4096);
+    IntPtr copied;
+    if(SendTextMessageTimeout(window,0x000D,new IntPtr(output.Capacity),output,0x0002,2500,out copied)==IntPtr.Zero)
+      throw new InvalidOperationException("Native Audit detail WM_GETTEXT timed out");
+    if(copied.ToInt64() >= output.Capacity-1)
+      throw new InvalidOperationException("Native Audit detail exceeds test buffer");
+    return output.ToString();
+  }
   [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr window);
   [DllImport("user32.dll", EntryPoint="PostMessageW", SetLastError=true)] public static extern bool PostMessage(IntPtr window,uint message,IntPtr wParam,IntPtr lParam);
   public static IntPtr SendMessage(IntPtr window,uint message,IntPtr wParam,IntPtr lParam) {
@@ -313,10 +328,8 @@ if($detailElement.TryGetCurrentPattern(
   # Compare the provider's actual value against the independent native
   # selection text. Merely exposing a read-only pattern is insufficient.
   $uiSelectedValue=$value.Current.Value
-  $nativeSelected=[System.Text.StringBuilder]::new(1024)
-  [void][MetadataIsolationWindowLocator]::GetWindowTextW(
-      $detailHwnd,$nativeSelected,$nativeSelected.Capacity)
-  if($uiSelectedValue -cne $nativeSelected.ToString() -or
+  $nativeSelected=[MetadataIsolationWindowLocator]::ReadEditText($detailHwnd)
+  if($uiSelectedValue -cne $nativeSelected -or
      $uiSelectedValue.IndexOf('INCOMPLETE',[StringComparison]::OrdinalIgnoreCase) -lt 0 -or
      $uiSelectedValue.IndexOf('track-01.mp3',[StringComparison]::OrdinalIgnoreCase) -lt 0 -or
      $uiSelectedValue.IndexOf('DATE',[StringComparison]::OrdinalIgnoreCase) -lt 0){
