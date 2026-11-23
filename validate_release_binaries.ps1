@@ -37,29 +37,28 @@ foreach ($binary in $binaries) {
         }
     }
 
+    # $ascii already has exactly one character per input byte. Native .NET
+    # ordinal substring search avoids millions of interpreted PowerShell
+    # byte-array accesses without weakening the original RSDS/path checks.
     $codeViewRecords = 0
-    for ($offset = 0; $offset -le $bytes.Length - 25; ++$offset) {
-        if ($bytes[$offset] -ne 0x52 -or $bytes[$offset + 1] -ne 0x53 -or
-            $bytes[$offset + 2] -ne 0x44 -or $bytes[$offset + 3] -ne 0x53) {
-            continue
-        }
+    $offset = $ascii.IndexOf('RSDS', [StringComparison]::Ordinal)
+    while ($offset -ge 0 -and $offset -le $bytes.Length - 25) {
         $pathStart = $offset + 24
         $pathEnd = $pathStart
         while ($pathEnd -lt $bytes.Length -and $bytes[$pathEnd] -ne 0 -and
             ($pathEnd - $pathStart) -lt 1024) {
             ++$pathEnd
         }
-        if ($pathEnd -eq $pathStart -or $pathEnd -ge $bytes.Length) {
-            continue
+        if ($pathEnd -gt $pathStart -and $pathEnd -lt $bytes.Length) {
+            $pdbPath = [Text.Encoding]::ASCII.GetString($bytes, $pathStart, $pathEnd - $pathStart)
+            if ($pdbPath.EndsWith('.pdb', [StringComparison]::OrdinalIgnoreCase)) {
+                ++$codeViewRecords
+                if ([IO.Path]::IsPathRooted($pdbPath) -or $pdbPath -ne [IO.Path]::GetFileName($pdbPath)) {
+                    throw "Absolute or directory-qualified PDB path '$pdbPath' found in release binary: $binary"
+                }
+            }
         }
-        $pdbPath = [Text.Encoding]::ASCII.GetString($bytes, $pathStart, $pathEnd - $pathStart)
-        if (-not $pdbPath.EndsWith('.pdb', [StringComparison]::OrdinalIgnoreCase)) {
-            continue
-        }
-        ++$codeViewRecords
-        if ([IO.Path]::IsPathRooted($pdbPath) -or $pdbPath -ne [IO.Path]::GetFileName($pdbPath)) {
-            throw "Absolute or directory-qualified PDB path '$pdbPath' found in release binary: $binary"
-        }
+        $offset = $ascii.IndexOf('RSDS', $offset + 1, [StringComparison]::Ordinal)
     }
     if ($codeViewRecords -ne 1) {
         throw "Expected exactly one portable CodeView/PDB record in release binary, found ${codeViewRecords}: $binary"

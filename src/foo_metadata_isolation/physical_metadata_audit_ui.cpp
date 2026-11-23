@@ -8,19 +8,110 @@
 #include "ui_scaling.h"
 #include "ui_tooltips.h"
 
+#include <UIAutomation.h>
+#include <wrl/implements.h>
+#include <wrl/client.h>
+#pragma comment(lib, "Uiautomationcore.lib")
+#pragma comment(lib, "OleAut32.lib")
+
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <vector>
 
 namespace metadata_isolation {
 namespace {
 
+// Keep the standard Edit/MSAA implementation. Expose its selected value
+// explicitly for UIA clients when the host supplies only a generic Pane.
+class AuditDetailProvider final : public Microsoft::WRL::RuntimeClass<
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+    IRawElementProviderSimple, IValueProvider> {
+public:
+    explicit AuditDetailProvider(HWND window) : window_(window) {}
+
+    void detach() noexcept { window_ = nullptr; }
+    void set_value(const wchar_t* value) { value_ = value; }
+
+    IFACEMETHODIMP get_ProviderOptions(ProviderOptions* options) override {
+        if (!options) return E_POINTER;
+        *options = static_cast<ProviderOptions>(ProviderOptions_ServerSideProvider |
+            ProviderOptions_UseComThreading);
+        return S_OK;
+    }
+    IFACEMETHODIMP GetPatternProvider(PATTERNID pattern, IUnknown** result) override {
+        if (!result) return E_POINTER;
+        *result = nullptr;
+        if (!window_) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (pattern == UIA_ValuePatternId)
+            return QueryInterface(__uuidof(IValueProvider), reinterpret_cast<void**>(result));
+        return S_OK;
+    }
+    IFACEMETHODIMP GetPropertyValue(PROPERTYID property, VARIANT* result) override {
+        if (!result) return E_POINTER;
+        VariantInit(result);
+        if (!window_) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (property == UIA_ControlTypePropertyId) {
+            result->vt = VT_I4;
+            result->lVal = UIA_EditControlTypeId;
+        }
+        return S_OK;
+    }
+    IFACEMETHODIMP get_HostRawElementProvider(IRawElementProviderSimple** result) override {
+        if (!result) return E_POINTER;
+        *result = nullptr;
+        return window_ ? UiaHostProviderFromHwnd(window_, result) : UIA_E_ELEMENTNOTAVAILABLE;
+    }
+    IFACEMETHODIMP SetValue(LPCWSTR) override { return E_ACCESSDENIED; }
+    IFACEMETHODIMP get_IsReadOnly(BOOL* result) override {
+        if (!result) return E_POINTER;
+        *result = TRUE;
+        return S_OK;
+    }
+    IFACEMETHODIMP get_Value(BSTR* result) override {
+        if (!result) return E_POINTER;
+        *result = nullptr;
+        if (!window_) return UIA_E_ELEMENTNOTAVAILABLE;
+        // Query the native EDIT at the instant UIA requests its value.
+        // The cached provider value can lag behind a keyboard selection change.
+        if (!IsWindow(window_)) return UIA_E_ELEMENTNOTAVAILABLE;
+        const int length = GetWindowTextLengthW(window_);
+        std::vector<wchar_t> text(static_cast<size_t>(length) + 1, L'\0');
+        const int copied = GetWindowTextW(window_, text.data(), static_cast<int>(text.size()));
+        *result = SysAllocStringLen(text.data(), static_cast<UINT>(copied));
+        return *result ? S_OK : E_OUTOFMEMORY;
+    }
+
+private:
+    HWND window_;
+    std::wstring value_;
+};
+
+LRESULT CALLBACK detail_accessibility_proc(HWND hwnd, UINT message, WPARAM wp,
+        LPARAM lp, UINT_PTR id, DWORD_PTR context) {
+    auto* provider = reinterpret_cast<AuditDetailProvider*>(context);
+    if (message == WM_GETOBJECT && static_cast<LONG>(lp) == UiaRootObjectId)
+        return UiaReturnRawElementProvider(hwnd, wp, lp, provider);
+    if (message == WM_NCDESTROY) {
+        RemoveWindowSubclass(hwnd, detail_accessibility_proc, id);
+        provider->detach();
+        UiaDisconnectProvider(provider);
+        provider->Release();
+    }
+    return DefSubclassProc(hwnd, message, wp, lp);
+}
+
 constexpr UINT WM_AUDIT_START = WM_APP + 0x61;
 constexpr UINT WM_AUDIT_PROGRESS = WM_APP + 0x62;
 constexpr UINT WM_AUDIT_DONE = WM_APP + 0x63;
+#if defined(FB2K_ENABLE_TEST_PROBES)
+constexpr UINT WM_AUDIT_TEST_LIBRARY_FAILURE = WM_APP + 0x64;
+#endif
 
 constexpr int k_filter_problems = 0;
 constexpr int k_filter_all = 1;
@@ -86,6 +177,52 @@ cfg_string g_cfg_audit_column_state(guids::cfg_audit_column_state, "");
 
 HWND g_audit_window = nullptr;
 
+// The default is a sentinel *pair*, not a ban on negative virtual-screen
+// coordinates. This helper is constexpr so both release and probe builds
+// enforce the same monitor-placement semantics.
+constexpr bool audit_has_saved_position(std::int64_t x, std::int64_t y) noexcept {
+    return x != -1 || y != -1;
+}
+static_assert(!audit_has_saved_position(-1, -1));
+static_assert(audit_has_saved_position(-1920, 250));
+static_assert(audit_has_saved_position(100, -1080));
+
+// Persisted cfg_int is 64-bit; UI filter and sort indices are native int.
+// Validate range before narrowing. Invalid filter values retain the existing
+// Problems default, while out-of-range sort columns clamp to visible bounds.
+constexpr int audit_valid_filter(std::int64_t stored) noexcept {
+    return (stored >= k_filter_problems && stored <= k_filter_ok)
+        ? static_cast<int>(stored) : k_filter_problems;
+}
+constexpr int audit_valid_sort_column(std::int64_t stored) noexcept {
+    return static_cast<int>(std::clamp<std::int64_t>(
+        stored, column_status, column_count - 1));
+}
+static_assert(audit_valid_filter(-100) == k_filter_problems);
+static_assert(audit_valid_filter(999) == k_filter_problems);
+static_assert(audit_valid_filter(k_filter_ok) == k_filter_ok);
+static_assert(audit_valid_sort_column(-100) == column_status);
+static_assert(audit_valid_sort_column(999) == column_count - 1);
+
+#if defined(FB2K_ENABLE_TEST_PROBES)
+// Only synthetic CI snapshots. Never record paths, metadata or user values.
+std::atomic_bool g_audit_probe_columns_pass{false};
+std::string g_audit_probe_columns_detail;
+std::atomic_size_t g_audit_probe_model_rows{0};
+std::atomic_size_t g_audit_probe_filtered_rows{0};
+std::atomic_int g_audit_probe_native_rows{-1};
+std::atomic_int g_audit_probe_filter{-1};
+std::atomic_bool g_audit_probe_list_visible{false};
+std::atomic_int g_audit_probe_insert_result{-999};
+std::atomic_int g_audit_probe_insert_error{-1};
+std::atomic_int g_audit_probe_list_style{-1};
+std::atomic_int g_audit_probe_list_unicode{-1};
+std::atomic_int g_audit_probe_resolved_valid{-1};
+std::atomic_int g_audit_probe_cached_valid{-1};
+std::atomic_int g_audit_probe_handles_equal{-1};
+std::atomic_int g_audit_probe_actual_rows{-1};
+#endif
+
 enum class audit_scope {
     library,
     selection,
@@ -112,7 +249,10 @@ std::vector<int> parse_int_list(const char* value) {
     std::string part;
     while (std::getline(stream, part, ',')) {
         try {
-            output.push_back(std::stoi(part));
+            size_t consumed = 0;
+            const int parsed = std::stoi(part, &consumed);
+            if (consumed != part.size()) return {};
+            output.push_back(parsed);
         } catch (...) {
             return {};
         }
@@ -258,6 +398,12 @@ public:
         m_window = window;
         m_list = GetDlgItem(window, IDC_AUDIT_RESULTS);
         m_progress = GetDlgItem(window, IDC_AUDIT_PROGRESS);
+        m_accessible_detail = GetDlgItem(window, IDC_AUDIT_ACCESSIBLE_DETAIL);
+        m_detail_provider = Microsoft::WRL::Make<AuditDetailProvider>(m_accessible_detail);
+        if (m_detail_provider && SetWindowSubclass(m_accessible_detail,
+                detail_accessibility_proc, 1, reinterpret_cast<DWORD_PTR>(m_detail_provider.Get()))) {
+            m_detail_provider->AddRef(); // Released at child WM_NCDESTROY.
+        }
         m_dpi = ui::detect_window_dpi(window);
         if (m_dpi == 0) m_dpi = 96;
 
@@ -278,30 +424,7 @@ public:
         m_tooltips.initialize(window, physical_audit_tooltip_definitions());
         if (m_tooltips.window() != nullptr) m_dark.AddCtrlAuto(m_tooltips.window());
 
-        ListView_SetExtendedListViewStyleEx(
-            m_list,
-            LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_HEADERDRAGDROP | LVS_EX_LABELTIP |
-                LVS_EX_INFOTIP,
-            LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_HEADERDRAGDROP | LVS_EX_LABELTIP |
-                LVS_EX_INFOTIP);
-
-        for (int index = 0; index < column_count; ++index) {
-            LVCOLUMNW column = {};
-            column.mask = LVCF_FMT | LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
-            column.fmt = LVCFMT_LEFT;
-            column.iSubItem = index;
-            column.pszText = const_cast<wchar_t*>(k_columns[index].title);
-            column.cx = ui::scale_for_window_dpi(window, k_columns[index].default_width);
-            ListView_InsertColumn(m_list, index, &column);
-        }
-        m_tooltips.add_control(
-            window,
-            ListView_GetHeader(m_list),
-            L"Click a header to sort. Right-click a header to show or hide columns. "
-            L"Physical tag columns show subsong-0 values; Cue columns show only "
-            L"unambiguous global Cue values used for exact comparison.");
-
-        restore_columns();
+        initialize_result_columns();
         setup_filter();
         restore_geometry();
         layout();
@@ -309,6 +432,8 @@ public:
         EnableWindow(GetDlgItem(window, IDC_AUDIT_CANCEL), FALSE);
         EnableWindow(GetDlgItem(window, IDC_AUDIT_EDIT_PHYSICAL), FALSE);
         ShowWindow(m_progress, SW_HIDE);
+        SetWindowTextW(m_accessible_detail, L"No result selected.");
+        if (m_detail_provider) m_detail_provider->set_value(L"No result selected.");
         set_text(
             window,
             IDC_AUDIT_STATUS,
@@ -327,6 +452,10 @@ public:
             m_pending_scope = scope;
             m_pending_seed = seed;
             m_pending_scan = true;
+            // A pending scope supersedes the previous physical targets now,
+            // even if the old read-only worker takes time to cancel.
+            m_rows.clear();
+            refresh_list(false);
             cancel_scan();
             set_text(
                 m_window,
@@ -345,8 +474,27 @@ public:
         auto state = std::make_shared<scan_state>(m_scope);
         if (m_scope == audit_scope::library) {
             try {
+#if defined(FB2K_ENABLE_TEST_PROBES)
+                if (m_test_fail_next_library_enumeration) {
+                    m_test_fail_next_library_enumeration = false;
+                    throw std::runtime_error("Synthetic CI library enumeration failure");
+                }
+#endif
                 library_manager::get()->get_all_items(state->source_items);
             } catch (const std::exception& error) {
+                // The requested library scope has already replaced the prior
+                // selection. Never leave its old physical targets actionable
+                // when enumeration fails before the normal scan reset.
+                m_rows.clear();
+                refresh_list(false);
+                EnableWindow(GetDlgItem(m_window, IDC_AUDIT_RESCAN), TRUE);
+                EnableWindow(GetDlgItem(m_window, IDC_AUDIT_CANCEL), FALSE);
+                set_text(m_window, IDC_AUDIT_STATUS,
+                    "Media Library enumeration failed; no audit results are available.");
+#if defined(FB2K_ENABLE_TEST_PROBES)
+                // Keep the synthetic host probe nonmodal; production errors still notify.
+                if (std::string(error.what()) == "Synthetic CI library enumeration failure") return;
+#endif
                 show_error("The Media Library could not be enumerated.", error.what());
                 return;
             }
@@ -355,9 +503,24 @@ public:
         }
 
         if (state->source_items.get_count() == 0) {
+            // An empty scope replaces the previous result set. Invalidate the
+            // physical targets before returning, including after a cancelled
+            // scan switches to an empty selection. refresh_list() clears the
+            // native selection, accessible detail and Edit eligibility.
+            m_rows.clear();
+            refresh_list(false);
+            EnableWindow(GetDlgItem(m_window, IDC_AUDIT_RESCAN), TRUE);
+            EnableWindow(GetDlgItem(m_window, IDC_AUDIT_CANCEL), FALSE);
             set_text(m_window, IDC_AUDIT_STATUS, "Nothing to audit in the current scope.");
             return;
         }
+
+        // A new nonempty scope must not display the previous scope's physical
+        // targets while the asynchronous read-only scan is running. Clearing
+        // the model and native ListView also invalidates the selected-result
+        // accessible value; the new batch is published only on completion.
+        m_rows.clear();
+        refresh_list(false);
 
         m_scan = state;
         m_close_when_done = false;
@@ -655,7 +818,7 @@ public:
     }
 
     void on_column_click(int column) {
-        int direction = g_cfg_audit_sort_dir;
+        int direction = g_cfg_audit_sort_dir < 0 ? -1 : 1;
         if (g_cfg_audit_sort_col == column) direction = -direction;
         else direction = 1;
         g_cfg_audit_sort_col = column;
@@ -671,10 +834,54 @@ public:
         refresh_list(true);
     }
 
+    void update_accessible_result_detail() {
+        // Native ListView rows are exposed via MSAA, but the hosted Windows
+        // UIA provider may expose zero ListItem/DataItem children. Mirror the
+        // selected row's essential metadata to an ordinary read-only Windows
+        // EDIT control. It exposes native text and MSAA value semantics, so
+        // keyboard users can Tab to and copy the selected result even where
+        // the host UIA provider does not expose ListView children or an EDIT
+        // ValuePattern. Do not claim full UIA/screen-reader qualification.
+        if (m_accessible_detail == nullptr || !IsWindow(m_accessible_detail)) return;
+        pfc::string_formatter detail;
+        const int count = ListView_GetSelectedCount(m_list);
+        if (count == 0) {
+            detail << "No result selected.";
+        } else if (count != 1) {
+            detail << count << " results selected. Select one to read its details.";
+        } else {
+            const int selected = ListView_GetNextItem(m_list, -1, LVNI_SELECTED);
+            LVITEMW item = {};
+            item.mask = LVIF_PARAM;
+            item.iItem = selected;
+            if (selected < 0 || !ListView_GetItem(m_list, &item) ||
+                static_cast<size_t>(item.lParam) >= m_rows.size()) {
+                detail << "Selected result is unavailable.";
+            } else {
+                const auto& row = m_rows[static_cast<size_t>(item.lParam)];
+                detail << "Selected result: " << physical_audit_status_name(row.status)
+                       << ". File: " << row.file_name.c_str();
+                if (!row.missing_fields.empty())
+                    detail << ". Missing core fields: " << row.missing_fields.c_str();
+                const std::string comparison = cue_comparison_text(row);
+                if (!comparison.empty())
+                    detail << ". Cue comparison: " << comparison.c_str();
+            }
+        }
+        pfc::stringcvt::string_wide_from_utf8 wide(detail.c_str());
+        if (m_detail_provider) m_detail_provider->set_value(static_cast<const wchar_t*>(wide));
+        SetWindowTextW(m_accessible_detail, static_cast<const wchar_t*>(wide));
+        // This notifies MSAA listeners of a genuine Windows EDIT value change.
+        // UIA/screenreader support is asserted independently in host tests.
+        NotifyWinEvent(EVENT_OBJECT_VALUECHANGE, m_accessible_detail,
+                       OBJID_CLIENT, CHILDID_SELF);
+    }
+
     void update_edit_enabled() {
         EnableWindow(
             GetDlgItem(m_window, IDC_AUDIT_EDIT_PHYSICAL),
             !m_scan && ListView_GetSelectedCount(m_list) != 0);
+        update_accessible_result_detail();
     }
 
     void show_column_menu(POINT point) {
@@ -770,6 +977,46 @@ public:
         g_cfg_audit_column_state = state.str().c_str();
     }
 
+    void initialize_result_columns() {
+        // Native theme setup can replace the resource ListView. Resolve it
+        // after theme hooks and initialize the current control, including
+        // its columns, rather than just rebinding rows during a later scan.
+        m_list = GetDlgItem(m_window, IDC_AUDIT_RESULTS);
+        if (m_list == nullptr || !IsWindow(m_list))
+            throw pfc::exception("Audit result ListView is unavailable");
+        ListView_SetExtendedListViewStyleEx(
+            m_list,
+            LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_HEADERDRAGDROP | LVS_EX_LABELTIP |
+                LVS_EX_INFOTIP,
+            LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_HEADERDRAGDROP | LVS_EX_LABELTIP |
+                LVS_EX_INFOTIP);
+
+        const int existing_columns = Header_GetItemCount(ListView_GetHeader(m_list));
+        if (existing_columns != 0 && existing_columns != column_count)
+            throw pfc::exception("Audit result column schema is incomplete");
+        for (int index = existing_columns; index < column_count; ++index) {
+            LVCOLUMNW column = {};
+            column.mask = LVCF_FMT | LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
+            column.fmt = LVCFMT_LEFT;
+            column.iSubItem = index;
+            column.pszText = const_cast<wchar_t*>(k_columns[index].title);
+            column.cx = ui::scale_for_window_dpi(m_window, k_columns[index].default_width);
+            if (ListView_InsertColumn(m_list, index, &column) != index)
+                throw pfc::exception("Audit result column creation failed");
+        }
+        m_tooltips.add_control(
+            m_window,
+            ListView_GetHeader(m_list),
+            L"Click a header to sort. Right-click a header to show or hide columns. "
+            L"Physical tag columns show subsong-0 values; Cue columns show only "
+            L"unambiguous global Cue values used for exact comparison.");
+
+#if defined(FB2K_ENABLE_TEST_PROBES)
+        verify_column_restore_for_test();
+#endif
+        restore_columns();
+    }
+
     void restore_columns() {
         const pfc::string8 saved_widths = g_cfg_audit_columns.get();
         const std::vector<int> widths = parse_int_list(saved_widths.get_ptr());
@@ -785,16 +1032,34 @@ public:
         std::string state(saved_state.get_ptr());
         const size_t separator = state.find('|');
         std::vector<int> order;
-        if (separator != std::string::npos) {
+        if (separator != std::string::npos &&
+            state.find('|', separator + 1) == std::string::npos) {
             try {
-                const unsigned mask = static_cast<unsigned>(
-                    std::stoul(state.substr(0, separator)));
-                for (int index = 0; index < column_count; ++index) {
-                    m_column_visible[index] = (mask & (1u << index)) != 0;
+                const std::string mask_text = state.substr(0, separator);
+                size_t consumed = 0;
+                const unsigned long parsed_mask = std::stoul(mask_text, &consumed, 10);
+                const std::vector<int> parsed_order =
+                    parse_int_list(state.substr(separator + 1).c_str());
+                bool valid_order = parsed_order.size() == column_count;
+                std::vector<bool> seen(column_count, false);
+                for (int value : parsed_order) {
+                    if (value < 0 || value >= column_count || seen[value]) {
+                        valid_order = false;
+                        break;
+                    }
+                    seen[value] = true;
                 }
-                order = parse_int_list(state.substr(separator + 1).c_str());
+                if (consumed == mask_text.size() &&
+                    parsed_mask != 0 &&
+                    (parsed_mask >> column_count) == 0 && valid_order) {
+                    const unsigned mask = static_cast<unsigned>(parsed_mask);
+                    for (int index = 0; index < column_count; ++index) {
+                        m_column_visible[index] = (mask & (1u << index)) != 0;
+                    }
+                    order = parsed_order;
+                }
             } catch (...) {
-                order.clear();
+                // Corrupt persisted state must leave the native default columns intact.
             }
         }
         int visible_count = 0;
@@ -823,10 +1088,97 @@ public:
                 }
                 seen[value] = true;
             }
-            if (valid) ListView_SetColumnOrderArray(m_list, column_count, order.data());
+            if (valid) {
+                const BOOL restored = ListView_SetColumnOrderArray(m_list, column_count, order.data());
+#if defined(FB2K_ENABLE_TEST_PROBES)
+                if (!restored && g_audit_probe_columns_detail.empty())
+                    g_audit_probe_columns_detail = "set_order_failed,header_count=" +
+                        std::to_string(Header_GetItemCount(ListView_GetHeader(m_list)));
+#else
+                (void)restored;
+#endif
+            }
         }
         update_sort_indicator();
     }
+
+#if defined(FB2K_ENABLE_TEST_PROBES)
+    void verify_column_restore_for_test() {
+        const pfc::string8 saved_widths = g_cfg_audit_columns.get();
+        const pfc::string8 saved_state = g_cfg_audit_column_state.get();
+        const auto reset_native = [&] {
+            std::vector<int> order(column_count);
+            for (int index = 0; index < column_count; ++index) {
+                order[index] = index;
+                m_column_visible[index] = k_columns[index].default_visible;
+                m_column_widths[index] = k_columns[index].default_width;
+            }
+            ListView_SetColumnOrderArray(m_list, column_count, order.data());
+        };
+        bool passed = true;
+        int scenario = 0;
+        g_audit_probe_columns_detail.clear();
+        std::vector<int> reverse_order;
+        std::vector<int> widths(column_count, 177);
+        for (int index = column_count - 1; index >= 0; --index)
+            reverse_order.push_back(index);
+        const std::string order_text = join_int_list(reverse_order);
+        const std::string width_text = join_int_list(widths);
+        const auto check = [&](const std::string& state, bool valid) {
+            ++scenario;
+            reset_native();
+            g_cfg_audit_columns = width_text.c_str();
+            g_cfg_audit_column_state = state.c_str();
+            restore_columns(); // Same cfg-backed implementation as normal startup.
+            std::vector<int> actual_order(column_count);
+            passed = ListView_GetColumnOrderArray(
+                m_list, column_count, actual_order.data()) != FALSE && passed;
+            for (int index = 0; index < column_count; ++index) {
+                const bool visible = valid ? index == column_file
+                                           : k_columns[index].default_visible;
+                const int expected_width = visible
+                    ? MulDiv(177, static_cast<int>(m_dpi), 96) : 0;
+                passed = passed && ListView_GetColumnWidth(m_list, index) == expected_width;
+                const int expected_order = valid ? column_count - 1 - index : index;
+                passed = passed && actual_order[index] == expected_order;
+                if ((ListView_GetColumnWidth(m_list, index) != expected_width ||
+                     actual_order[index] != expected_order) && g_audit_probe_columns_detail.empty()) {
+                    g_audit_probe_columns_detail = "header_count=" + std::to_string(Header_GetItemCount(ListView_GetHeader(m_list))) + ",case=" + std::to_string(scenario) +
+                        ",column=" + std::to_string(index) + ",width=" +
+                        std::to_string(ListView_GetColumnWidth(m_list, index)) +
+                        ",expected_width=" + std::to_string(expected_width) + ",order=" +
+                        std::to_string(actual_order[index]) + ",expected_order=" + std::to_string(expected_order);
+                }
+            }
+        };
+        check("2|" + order_text, true);
+        check("2junk|" + order_text, false);
+        check("2|" + order_text + "junk", false);
+        check("0|" + order_text, false);
+        check("65536|" + order_text, false);
+        check("2|0,0,2,3,4,5,6,7,8,9,10,11,12,13,14", false);
+        check("2|" + order_text + "|0", false);
+        // Width parsing must also reject a partial final integer.
+        reset_native();
+        g_cfg_audit_column_state = "";
+        g_cfg_audit_columns = (width_text + "junk").c_str();
+        restore_columns();
+        for (int index = 0; index < column_count; ++index) {
+            const int expected_width = k_columns[index].default_visible
+                ? MulDiv(k_columns[index].default_width, static_cast<int>(m_dpi), 96) : 0;
+            const int actual_width = ListView_GetColumnWidth(m_list, index);
+            passed = passed && actual_width == expected_width;
+            if (actual_width != expected_width && g_audit_probe_columns_detail.empty()) {
+                g_audit_probe_columns_detail = "case=invalid-width,column=" + std::to_string(index) +
+                    ",width=" + std::to_string(actual_width) + ",expected_width=" + std::to_string(expected_width);
+            }
+        }
+        g_cfg_audit_columns = saved_widths.get_ptr();
+        g_cfg_audit_column_state = saved_state.get_ptr();
+        reset_native();
+        g_audit_probe_columns_pass.store(passed);
+    }
+#endif
 
     void setup_filter() {
         constexpr const wchar_t* filters[] = {
@@ -843,12 +1195,20 @@ public:
                 m_window, IDC_AUDIT_FILTER, CB_ADDSTRING, 0,
                 reinterpret_cast<LPARAM>(filter));
         }
-        int selected = g_cfg_audit_filter;
-        if (selected < k_filter_problems || selected > k_filter_ok) selected = k_filter_problems;
+        const int selected = audit_valid_filter(g_cfg_audit_filter);
         SendDlgItemMessageW(m_window, IDC_AUDIT_FILTER, CB_SETCURSEL, selected, 0);
     }
 
     void refresh_list(bool preserve_selection) {
+        // foobar's native theme/layout initialization may recreate the
+        // ListView after WM_INITDIALOG. Never keep writing into a stale HWND.
+        const HWND current_list = GetDlgItem(m_window, IDC_AUDIT_RESULTS);
+        if (current_list == nullptr || !IsWindow(current_list)) {
+            throw pfc::exception("Audit result ListView is unavailable");
+        }
+        if (m_list != current_list) {
+            initialize_result_columns();
+        }
         std::set<std::string> selected_paths;
         if (preserve_selection) {
             int item = -1;
@@ -865,12 +1225,12 @@ public:
 
         std::vector<size_t> visible;
         visible.reserve(m_rows.size());
-        const int filter = g_cfg_audit_filter;
+        const int filter = audit_valid_filter(g_cfg_audit_filter);
         for (size_t index = 0; index < m_rows.size(); ++index) {
             if (filter_matches(m_rows[index], filter)) visible.push_back(index);
         }
 
-        const int sort_column = std::clamp<int>(g_cfg_audit_sort_col, 0, column_count - 1);
+        const int sort_column = audit_valid_sort_column(g_cfg_audit_sort_col);
         const int sort_direction = g_cfg_audit_sort_dir < 0 ? -1 : 1;
         std::stable_sort(
             visible.begin(),
@@ -879,6 +1239,16 @@ public:
                 const int result = compare_rows(m_rows[left], m_rows[right], sort_column);
                 return sort_direction > 0 ? result < 0 : result > 0;
             });
+
+        // ListView sends synchronous LVN_ITEMCHANGED while rows are replaced.
+        // Updating selection-dependent buttons from inside that notification
+        // re-enters the same control. Defer the single update until the batch
+        // finishes, including during exceptions.
+        struct refresh_scope {
+            bool& active;
+            explicit refresh_scope(bool& target) : active(target) { active = true; }
+            ~refresh_scope() { active = false; }
+        } rebuilding(m_refreshing_list);
 
         SendMessageW(m_list, WM_SETREDRAW, FALSE, 0);
         ListView_DeleteAllItems(m_list);
@@ -892,7 +1262,20 @@ public:
             item.iSubItem = 0;
             item.pszText = const_cast<wchar_t*>(static_cast<const wchar_t*>(status));
             item.lParam = static_cast<LPARAM>(row_index);
+            SetLastError(ERROR_SUCCESS);
             const int inserted = ListView_InsertItem(m_list, &item);
+#if defined(FB2K_ENABLE_TEST_PROBES)
+            g_audit_probe_insert_result.store(inserted);
+            g_audit_probe_insert_error.store(static_cast<int>(GetLastError()));
+            g_audit_probe_list_style.store(static_cast<int>(GetWindowLongPtrW(m_list, GWL_STYLE)));
+            g_audit_probe_list_unicode.store(ListView_GetUnicodeFormat(m_list));
+            const HWND resolved = GetDlgItem(m_window, IDC_AUDIT_RESULTS);
+            g_audit_probe_cached_valid.store(IsWindow(m_list) != FALSE);
+            g_audit_probe_resolved_valid.store(IsWindow(resolved) != FALSE);
+            g_audit_probe_handles_equal.store(resolved == m_list);
+            g_audit_probe_actual_rows.store(
+                IsWindow(resolved) ? ListView_GetItemCount(resolved) : -1);
+#endif
             if (inserted < 0) continue;
 
             const std::string values[] = {
@@ -927,12 +1310,19 @@ public:
         InvalidateRect(m_list, nullptr, TRUE);
         update_sort_indicator();
         update_edit_enabled();
+#if defined(FB2K_ENABLE_TEST_PROBES)
+        g_audit_probe_model_rows.store(m_rows.size());
+        g_audit_probe_filtered_rows.store(visible.size());
+        g_audit_probe_native_rows.store(ListView_GetItemCount(m_list));
+        g_audit_probe_filter.store(filter);
+        g_audit_probe_list_visible.store(IsWindowVisible(m_list) != FALSE);
+#endif
     }
 
     void update_sort_indicator() {
         const HWND header = ListView_GetHeader(m_list);
         if (header == nullptr) return;
-        const int sort_column = std::clamp<int>(g_cfg_audit_sort_col, 0, column_count - 1);
+        const int sort_column = audit_valid_sort_column(g_cfg_audit_sort_col);
         const bool ascending = g_cfg_audit_sort_dir >= 0;
         for (int index = 0; index < column_count; ++index) {
             HDITEMW item = {};
@@ -956,6 +1346,8 @@ public:
         const int filter_label_width = ui::scale_for_window_dpi(m_window, 36);
         const int filter_width = ui::scale_for_window_dpi(m_window, 160);
         const int bottom_height = ui::scale_for_window_dpi(m_window, 30);
+        const int detail_height = ui::scale_for_window_dpi(m_window, 24);
+        const int detail_label_width = ui::scale_for_window_dpi(m_window, 104);
         const int button_height = ui::scale_for_window_dpi(m_window, 26);
 
         const int right = client.right - margin;
@@ -984,13 +1376,23 @@ public:
             TRUE);
 
         const int list_top = progress_top + progress_height + gap;
-        const int list_bottom = client.bottom - margin - bottom_height - gap;
+        const int list_bottom = client.bottom - margin - bottom_height - gap - detail_height - gap;
         MoveWindow(
             m_list,
             margin, list_top,
             std::max<int>(40, client.right - 2 * margin),
             std::max<int>(40, list_bottom - list_top),
             TRUE);
+        const int detail_top = list_bottom + gap;
+        MoveWindow(
+            GetDlgItem(m_window, IDC_AUDIT_RESULT_DETAIL_LABEL),
+            margin, detail_top + ui::scale_for_window_dpi(m_window, 3),
+            detail_label_width, detail_height, TRUE);
+        MoveWindow(
+            m_accessible_detail,
+            margin + detail_label_width + gap, detail_top,
+            std::max<int>(40, client.right - 2 * margin - detail_label_width - gap),
+            detail_height, TRUE);
 
         int x = margin;
         struct button_layout { int id; int width; };
@@ -1014,11 +1416,28 @@ public:
     }
 
     void restore_geometry() {
-        const int saved_x = g_cfg_audit_win_x;
-        const int saved_y = g_cfg_audit_win_y;
-        if (saved_x < 0 || saved_y < 0) return;
-        int width = MulDiv(std::max<int>(g_cfg_audit_win_w, 760), static_cast<int>(m_dpi), 96);
-        int height = MulDiv(std::max<int>(g_cfg_audit_win_h, 440), static_cast<int>(m_dpi), 96);
+        // (-1,-1) is the *pair* used by the untouched preference defaults.
+        // Negative coordinates individually are valid for secondary monitors
+        // placed left of or above the primary display.
+        const std::int64_t raw_x = g_cfg_audit_win_x;
+        const std::int64_t raw_y = g_cfg_audit_win_y;
+        if (!audit_has_saved_position(raw_x, raw_y)) return;
+
+        // cfg_int persists 64-bit values; Win32 RECT/MulDiv consume 32-bit
+        // coordinates. Bound corrupted preferences before narrowing/scaling.
+        const auto bounded_position = [](std::int64_t position) {
+            return static_cast<int>(std::clamp<std::int64_t>(
+                position, std::numeric_limits<int>::min() / 2,
+                std::numeric_limits<int>::max() / 2));
+        };
+        const int saved_x = bounded_position(raw_x);
+        const int saved_y = bounded_position(raw_y);
+        const int saved_width = static_cast<int>(std::clamp<std::int64_t>(
+            g_cfg_audit_win_w, 760, 32768));
+        const int saved_height = static_cast<int>(std::clamp<std::int64_t>(
+            g_cfg_audit_win_h, 440, 32768));
+        int width = MulDiv(saved_width, static_cast<int>(m_dpi), 96);
+        int height = MulDiv(saved_height, static_cast<int>(m_dpi), 96);
         RECT desired = {saved_x, saved_y, saved_x + width, saved_y + height};
         HMONITOR monitor = MonitorFromRect(&desired, MONITOR_DEFAULTTONEAREST);
         MONITORINFO info = {sizeof(info)};
@@ -1089,7 +1508,7 @@ public:
                 edit_selected_physical();
                 return 0;
             case LVN_ITEMCHANGED:
-                update_edit_enabled();
+                if (!m_refreshing_list) update_edit_enabled();
                 return 0;
             case LVN_GETINFOTIPW: {
                 auto* tip = reinterpret_cast<NMLVGETINFOTIPW*>(header);
@@ -1154,6 +1573,12 @@ public:
             case IDC_AUDIT_FILTER:
                 if (HIWORD(w_param) == CBN_SELCHANGE) self->on_filter_changed();
                 return TRUE;
+            case IDC_AUDIT_ACCESSIBLE_DETAIL:
+                // The hosted ListView may not send every selection-change
+                // notification reliably. Refresh the live selected row when
+                // keyboard/screenreader focus enters the read-only detail.
+                if (HIWORD(w_param) == EN_SETFOCUS) self->update_accessible_result_detail();
+                return TRUE;
             case IDC_AUDIT_RESCAN:
                 self->on_start_scan();
                 return TRUE;
@@ -1192,6 +1617,20 @@ public:
         case WM_CLOSE:
             self->close();
             return TRUE;
+#if defined(FB2K_ENABLE_TEST_PROBES)
+        case WM_AUDIT_TEST_LIBRARY_FAILURE: {
+            wchar_t actions[8] = {};
+            wchar_t runner_temp[2] = {};
+            if (GetEnvironmentVariableW(L"GITHUB_ACTIONS", actions, 8) == 4 &&
+                wcscmp(actions, L"true") == 0 &&
+                GetEnvironmentVariableW(L"RUNNER_TEMP", runner_temp, 2) > 0) {
+                self->m_test_fail_next_library_enumeration = true;
+                metadb_handle_list empty;
+                self->request_scope(audit_scope::library, empty);
+            }
+            return TRUE;
+        }
+#endif
         case WM_AUDIT_START:
             self->on_start_scan();
             return TRUE;
@@ -1281,6 +1720,8 @@ private:
     HWND m_window = nullptr;
     HWND m_list = nullptr;
     HWND m_progress = nullptr;
+    Microsoft::WRL::ComPtr<AuditDetailProvider> m_detail_provider;
+    HWND m_accessible_detail = nullptr;
     UINT m_dpi = 96;
     fb2k::CCoreDarkModeHooks m_dark;
     dialog_tooltips m_tooltips;
@@ -1290,7 +1731,11 @@ private:
     bool m_column_visible[column_count] = {};
     bool m_close_when_done = false;
     bool m_pending_scan = false;
+#if defined(FB2K_ENABLE_TEST_PROBES)
+    bool m_test_fail_next_library_enumeration = false;
+#endif
     bool m_modeless_registered = false;
+    bool m_refreshing_list = false;
     audit_scope m_pending_scope = audit_scope::library;
     metadb_handle_list m_pending_seed;
 };
@@ -1329,6 +1774,27 @@ mainmenu_group_popup_factory g_audit_mainmenu_group(
 mainmenu_commands_factory_t<audit_mainmenu_commands> g_audit_mainmenu_commands;
 
 } // namespace
+
+#if defined(FB2K_ENABLE_TEST_PROBES)
+void read_audit_internal_state_for_test(pfc::string_base& output) {
+    output << "audit_column_restore_pass=" << (g_audit_probe_columns_pass.load() ? "true" : "false") << "\n"
+           << "audit_column_restore_detail=" << g_audit_probe_columns_detail.c_str() << "\n"
+           << "audit_model_rows=" << g_audit_probe_model_rows.load() << "\n"
+           << "audit_filtered_rows=" << g_audit_probe_filtered_rows.load() << "\n"
+           << "audit_native_rows=" << g_audit_probe_native_rows.load() << "\n"
+           << "audit_insert_result=" << g_audit_probe_insert_result.load() << "\n"
+           << "audit_insert_error=" << g_audit_probe_insert_error.load() << "\n"
+           << "audit_list_style=" << g_audit_probe_list_style.load() << "\n"
+           << "audit_list_unicode=" << g_audit_probe_list_unicode.load() << "\n"
+           << "audit_cached_valid=" << g_audit_probe_cached_valid.load() << "\n"
+           << "audit_resolved_valid=" << g_audit_probe_resolved_valid.load() << "\n"
+           << "audit_handles_equal=" << g_audit_probe_handles_equal.load() << "\n"
+           << "audit_actual_rows=" << g_audit_probe_actual_rows.load() << "\n"
+           << "audit_filter_index=" << g_audit_probe_filter.load() << "\n"
+           << "audit_list_visible="
+           << (g_audit_probe_list_visible.load() ? "true" : "false") << "\n";
+}
+#endif
 
 void show_physical_metadata_audit_library() {
     metadb_handle_list empty;
