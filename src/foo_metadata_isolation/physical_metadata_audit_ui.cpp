@@ -77,7 +77,13 @@ public:
         if (!result) return E_POINTER;
         *result = nullptr;
         if (!window_) return UIA_E_ELEMENTNOTAVAILABLE;
-        *result = SysAllocString(value_.c_str());
+        // Query the native EDIT at the instant UIA requests its value.
+        // The cached provider value can lag behind a keyboard selection change.
+        if (!IsWindow(window_)) return UIA_E_ELEMENTNOTAVAILABLE;
+        const int length = GetWindowTextLengthW(window_);
+        std::vector<wchar_t> text(static_cast<size_t>(length) + 1, L'\0');
+        const int copied = GetWindowTextW(window_, text.data(), static_cast<int>(text.size()));
+        *result = SysAllocStringLen(text.data(), static_cast<UINT>(copied));
         return *result ? S_OK : E_OUTOFMEMORY;
     }
 
