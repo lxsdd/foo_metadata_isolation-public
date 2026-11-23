@@ -618,9 +618,9 @@ foreach ($candidate in @($second, $fixture)) {
   Assert-CompletedAudit $window
   & ./tests/assert_real_audit_keyboard_msaa.ps1 -FoobarPid $FoobarPid -AuditHwnd $window -ListHwnd $ownedList
   [void][MetadataIsolationWindowLocator]::SendMessage($window,0x0028,$detailHwnd,[IntPtr]::new(1))
-  $text = [System.Text.StringBuilder]::new(4096)
-  [void][MetadataIsolationWindowLocator]::GetWindowTextW($detailHwnd,$text,$text.Capacity)
-  $actual = $text.ToString()
+  # Use the timeout-bounded cross-process EDIT oracle for every selection.
+  # GetWindowTextW returns empty for an EDIT in the foobar process.
+  $actual = [MetadataIsolationWindowLocator]::ReadEditText($detailHwnd)
   $expectedLeaf = [IO.Path]::GetFileName($candidate)
   $otherLeaf = if ($candidate -eq $fixture) { 'track-02.mp3' } else { 'track-01.mp3' }
   if (-not $actual.Contains($expectedLeaf) -or $actual.Contains($otherLeaf) -or
